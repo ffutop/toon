@@ -1,8 +1,8 @@
 # TOON
 
-> 面向 Token 的对象表示法
+> 面向 Token 的<br>对象表示法
 
-一种为 LLM 提示词设计的、紧凑且人类可读的 JSON 数据模型编码方式。
+一种为 LLM 提示词设计的、紧凑且人类可读的 <br>JSON 数据模型编码方式。
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@
 - [在线演练场](/zh/playground.md)
 - [实现列表](/zh/ecosystem/implementations.md): 跨语言的官方与社区 TOON 实现,以及贡献指引。
 - [工具与演练场](/zh/ecosystem/tools-and-playgrounds.md): TOON 的演练场、CLI、编辑器支持及生态工具。
-- [快速开始](/zh/guide/getting-started.md): TOON 是什么、何时使用它,以及使用 TypeScript 库进行编码/解码的第一个示例。
+- [快速开始](/zh/guide/getting-started.md): TOON 是什么、何时使用它，以及使用 TypeScript 库进行编码/解码的第一个示例。
 - [性能基准](/zh/guide/benchmarks.md): TOON 在混合结构与纯扁平结构两个赛道上的检索准确率与 token 效率结果。
 - [格式概览](/zh/guide/format-overview.md): 通过具体示例了解 TOON 语法——对象、数组、头部、键折叠和引号规则。
 - [规范](/zh/reference/spec.md): TOON 规范导览——各章节、合规性检查清单、媒体类型与版本管理。
