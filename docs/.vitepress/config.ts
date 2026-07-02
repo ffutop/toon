@@ -17,6 +17,8 @@ export default defineConfig({
   },
 
   head: [
+    ['script', { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=G-LEH5QWYL6D' }],
+    ['script', {}, `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','G-LEH5QWYL6D');`],
     ['link', { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' }],
     ['meta', { name: 'author', content: 'Johann Schopplich' }],
     ['meta', { property: 'og:type', content: 'website' }],
