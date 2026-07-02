@@ -7,6 +7,15 @@ import { description, github, name, ogImage, ogUrl, releases, twitterImage, vers
 export default defineConfig({
   title: name,
   description,
+
+  rewrites: {
+    'guide/:page': 'en/guide/:page',
+    'cli/:page': 'en/cli/:page',
+    'reference/:page': 'en/reference/:page',
+    'ecosystem/:page': 'en/ecosystem/:page',
+    'playground.md': 'en/playground.md',
+  },
+
   head: [
     ['link', { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' }],
     ['meta', { name: 'author', content: 'Johann Schopplich' }],
@@ -29,16 +38,17 @@ export default defineConfig({
   },
 
   locales: {
-    root: {
+    en: {
       label: 'English',
       lang: 'en',
+      link: '/en/',
       themeConfig: {
         nav: navEn(),
         sidebar: {
-          '/guide/': sidebarEn(),
-          '/cli/': sidebarEn(),
-          '/reference/': sidebarEn(),
-          '/ecosystem/': sidebarEn(),
+          '/en/guide/': sidebarEn(),
+          '/en/cli/': sidebarEn(),
+          '/en/reference/': sidebarEn(),
+          '/en/ecosystem/': sidebarEn(),
         },
         footer: {
           message: 'Released under the <a href="https://opensource.org/licenses/MIT" target="_blank">MIT License</a>.',
@@ -46,7 +56,7 @@ export default defineConfig({
         },
       },
     },
-    zh: {
+    root: {
       label: '简体中文',
       lang: 'zh-CN',
       link: '/zh/',
@@ -128,38 +138,38 @@ function navEn(): DefaultTheme.NavItem[] {
   return [
     {
       text: 'Playground',
-      link: '/playground',
+      link: '/en/playground',
     },
     {
       text: 'Guide',
-      activeMatch: '^/guide/',
+      activeMatch: '^/en/guide/',
       items: [
-        { text: 'Getting Started', link: '/guide/getting-started' },
-        { text: 'Format Overview', link: '/guide/format-overview' },
-        { text: 'Using TOON with LLMs', link: '/guide/llm-prompts' },
-        { text: 'Benchmarks', link: '/guide/benchmarks' },
+        { text: 'Getting Started', link: '/en/guide/getting-started' },
+        { text: 'Format Overview', link: '/en/guide/format-overview' },
+        { text: 'Using TOON with LLMs', link: '/en/guide/llm-prompts' },
+        { text: 'Benchmarks', link: '/en/guide/benchmarks' },
       ],
     },
     {
       text: 'CLI',
-      link: '/cli/',
+      link: '/en/cli/',
     },
     {
       text: 'Reference',
-      activeMatch: '^/reference/',
+      activeMatch: '^/en/reference/',
       items: [
-        { text: 'API', link: '/reference/api' },
-        { text: 'Syntax Cheatsheet', link: '/reference/syntax-cheatsheet' },
-        { text: 'Specification', link: '/reference/spec' },
-        { text: 'Efficiency Formalization', link: '/reference/efficiency-formalization' },
+        { text: 'API', link: '/en/reference/api' },
+        { text: 'Syntax Cheatsheet', link: '/en/reference/syntax-cheatsheet' },
+        { text: 'Specification', link: '/en/reference/spec' },
+        { text: 'Efficiency Formalization', link: '/en/reference/efficiency-formalization' },
       ],
     },
     {
       text: 'Ecosystem',
-      activeMatch: '^/ecosystem/',
+      activeMatch: '^/en/ecosystem/',
       items: [
-        { text: 'Tools & Playgrounds', link: '/ecosystem/tools-and-playgrounds' },
-        { text: 'Implementations', link: '/ecosystem/implementations' },
+        { text: 'Tools & Playgrounds', link: '/en/ecosystem/tools-and-playgrounds' },
+        { text: 'Implementations', link: '/en/ecosystem/implementations' },
       ],
     },
     {
@@ -179,33 +189,33 @@ function sidebarEn(): DefaultTheme.SidebarItem[] {
     {
       text: 'Guide',
       items: [
-        { text: 'Getting Started', link: '/guide/getting-started' },
-        { text: 'Format Overview', link: '/guide/format-overview' },
-        { text: 'Using TOON with LLMs', link: '/guide/llm-prompts' },
-        { text: 'Benchmarks', link: '/guide/benchmarks' },
+        { text: 'Getting Started', link: '/en/guide/getting-started' },
+        { text: 'Format Overview', link: '/en/guide/format-overview' },
+        { text: 'Using TOON with LLMs', link: '/en/guide/llm-prompts' },
+        { text: 'Benchmarks', link: '/en/guide/benchmarks' },
       ],
     },
     {
       text: 'Tooling',
       items: [
-        { text: 'Playground', link: '/playground' },
-        { text: 'CLI Reference', link: '/cli/' },
+        { text: 'Playground', link: '/en/playground' },
+        { text: 'CLI Reference', link: '/en/cli/' },
       ],
     },
     {
       text: 'Ecosystem',
       items: [
-        { text: 'Tools & Playgrounds', link: '/ecosystem/tools-and-playgrounds' },
-        { text: 'Implementations', link: '/ecosystem/implementations' },
+        { text: 'Tools & Playgrounds', link: '/en/ecosystem/tools-and-playgrounds' },
+        { text: 'Implementations', link: '/en/ecosystem/implementations' },
       ],
     },
     {
       text: 'Reference',
       items: [
-        { text: 'API (TypeScript)', link: '/reference/api' },
-        { text: 'Syntax Cheatsheet', link: '/reference/syntax-cheatsheet' },
-        { text: 'Specification', link: '/reference/spec' },
-        { text: 'Efficiency Formalization', link: '/reference/efficiency-formalization' },
+        { text: 'API (TypeScript)', link: '/en/reference/api' },
+        { text: 'Syntax Cheatsheet', link: '/en/reference/syntax-cheatsheet' },
+        { text: 'Specification', link: '/en/reference/spec' },
+        { text: 'Efficiency Formalization', link: '/en/reference/efficiency-formalization' },
       ],
     },
   ]
