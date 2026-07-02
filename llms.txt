@@ -1,8 +1,8 @@
 # TOON
 
-> Token-Oriented Object Notation
+> 面向 Token 的对象表示法
 
-A compact, human-readable encoding of the JSON data model for LLM prompts.
+一种为 LLM 提示词设计的、紧凑且人类可读的 JSON 数据模型编码方式。
 
 ## Table of Contents
 
@@ -30,4 +30,3 @@ A compact, human-readable encoding of the JSON data model for LLM prompts.
 - [格式概览](/zh/guide/format-overview.md): 通过具体示例了解 TOON 语法——对象、数组、头部、键折叠和引号规则。
 - [规范](/zh/reference/spec.md): TOON 规范导览——各章节、合规性检查清单、媒体类型与版本管理。
 - [语法速查表](/zh/reference/syntax-cheatsheet.md): 一览 JSON 与 TOON 之间的映射关系——对象、数组、引号、键折叠和类型转换。
-- [面向 Token 的对象表示法](/zh.md)
