@@ -9,6 +9,10 @@ export default defineConfig({
   description,
 
   rewrites: {
+    // Chinese homepage becomes the site root
+    'zh/index.md': 'index.md',
+    // English content moves to /en/ prefix
+    'index.md': 'en/index.md',
     'guide/:page': 'en/guide/:page',
     'cli/:page': 'en/cli/:page',
     'reference/:page': 'en/reference/:page',
@@ -61,7 +65,7 @@ export default defineConfig({
     root: {
       label: '简体中文',
       lang: 'zh-CN',
-      link: '/zh/',
+      link: '/',
       title: name,
       description: '面向 Token 的对象表示法',
       themeConfig: {
@@ -133,6 +137,22 @@ export default defineConfig({
       md.use(copyOrDownloadAsMarkdownButtons)
     },
     math: true,
+  },
+
+  async buildEnd(siteConfig) {
+    const { join } = await import('node:path')
+    const { readFile, writeFile } = await import('node:fs/promises')
+    // Fix hardcoded absolute links in the English homepage.
+    // VitePress rewrites change the output URL of English pages to /en/*, but
+    // frontmatter hero `link:` values are rendered as literal strings and are
+    // not updated by the rewrite system.
+    const enIndex = join(siteConfig.outDir, 'en', 'index.html')
+    let html = await readFile(enIndex, 'utf-8')
+    for (const seg of ['guide', 'cli', 'reference', 'ecosystem']) {
+      html = html.replaceAll(`href="/${seg}/`, `href="/en/${seg}/`)
+    }
+    html = html.replaceAll('href="/playground', 'href="/en/playground')
+    await writeFile(enIndex, html)
   },
 })
 

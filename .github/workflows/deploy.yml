@@ -79,20 +79,6 @@ jobs:
           # Copy new build
           cp -a ../docs/.vitepress/dist/. .
 
-          # Copy English homepage to /en/ and fix hardcoded absolute links
-          # (VitePress rewrites handle /en/guide/ etc. but frontmatter links are literal)
-          cp index.html en/index.html
-          sed -i \
-            -e 's|href="/guide/|href="/en/guide/|g' \
-            -e 's|href="/cli/|href="/en/cli/|g' \
-            -e 's|href="/reference/|href="/en/reference/|g' \
-            -e 's|href="/ecosystem/|href="/en/ecosystem/|g' \
-            -e 's|href="/playground|href="/en/playground|g' \
-            en/index.html
-
-          # Use Chinese homepage as the default root page
-          cp zh/index.html index.html
-
           touch .nojekyll
           echo "toonformat.cn" > CNAME
 
