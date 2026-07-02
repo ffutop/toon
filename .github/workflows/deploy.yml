@@ -81,6 +81,7 @@ jobs:
 
           touch .nojekyll
           echo "toonformat.cn" > CNAME
+          echo "5d683c5d54175f1da1c40637eb526f79" > baidu_verify_codeva-2Ek5bG4FUI.html
 
           # Commit and push
           git config user.name "github-actions[bot]"
