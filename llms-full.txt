@@ -1,5 +1,5 @@
 ---
-url: /reference/api.md
+url: /en/reference/api.md
 description: >-
   TypeScript and JavaScript encode and decode functions, options, error types,
   and streaming decoders for @toon-format/toon.
@@ -1551,7 +1551,7 @@ encode(data, { delimiter: '\t', keyFolding: 'safe' })
 ---
 
 ---
-url: /guide/benchmarks.md
+url: /en/guide/benchmarks.md
 description: >-
   Retrieval accuracy and token efficiency results for TOON across
   mixed-structure and flat-only tracks.
@@ -2121,7 +2121,7 @@ repositories[3]{id,name,repo,description,createdAt,updatedAt,pushedAt,stars,watc
 ---
 
 ---
-url: /cli.md
+url: /en/cli.md
 description: >-
   Convert JSON to TOON and back from the command line, with token statistics,
   streaming, and delimiter options.
@@ -2483,7 +2483,7 @@ toon data.json --keyFolding safe --delimiter $'\t' --stats -o output.toon
 ---
 
 ---
-url: /guide/format-overview.md
+url: /en/guide/format-overview.md
 description: >-
   TOON syntax with concrete examples – objects, arrays, headers, key folding,
   and quoting rules.
@@ -2859,7 +2859,7 @@ For complete rules on quoting, escaping, type conversions, and strict-mode decod
 ---
 
 ---
-url: /guide/getting-started.md
+url: /en/guide/getting-started.md
 description: >-
   What TOON is, when to use it, and a first encode/decode example with the
   TypeScript library.
@@ -3113,7 +3113,7 @@ Now that you've seen your first TOON document, read the [Format Overview](/guide
 ---
 
 ---
-url: /ecosystem/implementations.md
+url: /en/ecosystem/implementations.md
 description: >-
   Official and community TOON implementations across languages, plus
   contribution pointers.
@@ -3187,14 +3187,14 @@ Building a TOON implementation for a new language? Great! Here are some steps to
 ---
 
 ---
-url: /playground.md
+url: /en/playground.md
 ---
 
 
 ---
 
 ---
-url: /reference/spec.md
+url: /en/reference/spec.md
 description: >-
   Guided tour of the TOON specification – sections, conformance checklists,
   media type, and versioning.
@@ -3379,7 +3379,7 @@ The spec is community-maintained at [github.com/toon-format/spec](https://github
 ---
 
 ---
-url: /reference/syntax-cheatsheet.md
+url: /en/reference/syntax-cheatsheet.md
 description: >-
   JSON-to-TOON mappings at a glance for objects, arrays, quoting, key folding,
   and type conversions.
@@ -3752,7 +3752,7 @@ TOON itself doesn't specify how `Date` should be encoded – the spec leaves thi
 ---
 
 ---
-url: /ecosystem/tools-and-playgrounds.md
+url: /en/ecosystem/tools-and-playgrounds.md
 description: 'TOON playgrounds, CLI, editor support, and ecosystem tools.'
 ---
 
@@ -3838,7 +3838,7 @@ See the [API Reference](/reference/api) for details.
 ---
 
 ---
-url: /reference/efficiency-formalization.md
+url: /en/reference/efficiency-formalization.md
 description: >-
   Mathematical model of TOON's byte-level overhead vs JSON across structure
   families, with formulas and worked examples.
@@ -4870,7 +4870,7 @@ key: []
 ---
 
 ---
-url: /guide/llm-prompts.md
+url: /en/guide/llm-prompts.md
 description: >-
   Prompting strategies for sending TOON to LLMs and validating TOON they
   generate, with examples.

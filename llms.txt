@@ -6,20 +6,20 @@ A compact, human-readable encoding of the JSON data model for LLM prompts.
 
 ## Table of Contents
 
-- [API Reference](/reference/api.md): TypeScript and JavaScript encode and decode functions, options, error types, and streaming decoders for @toon-format/toon.
+- [API Reference](/en/reference/api.md): TypeScript and JavaScript encode and decode functions, options, error types, and streaming decoders for @toon-format/toon.
 - [API 参考](/zh/reference/api.md): @toon-format/toon 的 TypeScript 与 JavaScript 编码/解码函数、选项、错误类型及流式解码器。
-- [Benchmarks](/guide/benchmarks.md): Retrieval accuracy and token efficiency results for TOON across mixed-structure and flat-only tracks.
-- [Command Line Interface](/cli.md): Convert JSON to TOON and back from the command line, with token statistics, streaming, and delimiter options.
-- [Format Overview](/guide/format-overview.md): TOON syntax with concrete examples – objects, arrays, headers, key folding, and quoting rules.
-- [Getting Started](/guide/getting-started.md): What TOON is, when to use it, and a first encode/decode example with the TypeScript library.
-- [Implementations](/ecosystem/implementations.md): Official and community TOON implementations across languages, plus contribution pointers.
-- [Playground](/playground.md)
-- [Specification](/reference/spec.md): Guided tour of the TOON specification – sections, conformance checklists, media type, and versioning.
-- [Syntax Cheatsheet](/reference/syntax-cheatsheet.md): JSON-to-TOON mappings at a glance for objects, arrays, quoting, key folding, and type conversions.
-- [Tools and Playgrounds](/ecosystem/tools-and-playgrounds.md): TOON playgrounds, CLI, editor support, and ecosystem tools.
-- [TOON vs JSON: Byte-Level Efficiency Model](/reference/efficiency-formalization.md): Mathematical model of TOON's byte-level overhead vs JSON across structure families, with formulas and worked examples.
+- [Benchmarks](/en/guide/benchmarks.md): Retrieval accuracy and token efficiency results for TOON across mixed-structure and flat-only tracks.
+- [Command Line Interface](/en/cli.md): Convert JSON to TOON and back from the command line, with token statistics, streaming, and delimiter options.
+- [Format Overview](/en/guide/format-overview.md): TOON syntax with concrete examples – objects, arrays, headers, key folding, and quoting rules.
+- [Getting Started](/en/guide/getting-started.md): What TOON is, when to use it, and a first encode/decode example with the TypeScript library.
+- [Implementations](/en/ecosystem/implementations.md): Official and community TOON implementations across languages, plus contribution pointers.
+- [Playground](/en/playground.md)
+- [Specification](/en/reference/spec.md): Guided tour of the TOON specification – sections, conformance checklists, media type, and versioning.
+- [Syntax Cheatsheet](/en/reference/syntax-cheatsheet.md): JSON-to-TOON mappings at a glance for objects, arrays, quoting, key folding, and type conversions.
+- [Tools and Playgrounds](/en/ecosystem/tools-and-playgrounds.md): TOON playgrounds, CLI, editor support, and ecosystem tools.
+- [TOON vs JSON: Byte-Level Efficiency Model](/en/reference/efficiency-formalization.md): Mathematical model of TOON's byte-level overhead vs JSON across structure families, with formulas and worked examples.
 - [TOON 与 JSON 对比:字节级效率模型](/zh/reference/efficiency-formalization.md): 跨结构类型对比 TOON 与 JSON 字节级开销的数学模型,附带公式与实例推导。
-- [Using TOON with LLMs](/guide/llm-prompts.md): Prompting strategies for sending TOON to LLMs and validating TOON they generate, with examples.
+- [Using TOON with LLMs](/en/guide/llm-prompts.md): Prompting strategies for sending TOON to LLMs and validating TOON they generate, with examples.
 - [命令行接口](/zh/cli.md): 从命令行将 JSON 转换为 TOON,或反向转换,支持 token 统计、流式处理和分隔符选项。
 - [在 LLM 中使用 TOON](/zh/guide/llm-prompts.md): 向 LLM 发送 TOON 以及校验其生成的 TOON 的提示策略,附带示例。
 - [在线演练场](/zh/playground.md)
