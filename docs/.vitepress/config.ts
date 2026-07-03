@@ -255,8 +255,8 @@ function navZh(): DefaultTheme.NavItem[] {
       items: [
         { text: '快速开始', link: '/zh/guide/getting-started' },
         { text: '格式概览', link: '/zh/guide/format-overview' },
-        { text: '在 LLM 中使用 TOON', link: '/zh/guide/llm-prompts' },
-        { text: '性能基准', link: '/zh/guide/benchmarks' },
+        { text: '在大语言模型中使用 TOON', link: '/zh/guide/llm-prompts' },
+        { text: '基准测试', link: '/zh/guide/benchmarks' },
       ],
     },
     {
@@ -300,8 +300,8 @@ function sidebarZh(): DefaultTheme.SidebarItem[] {
       items: [
         { text: '快速开始', link: '/zh/guide/getting-started' },
         { text: '格式概览', link: '/zh/guide/format-overview' },
-        { text: '在 LLM 中使用 TOON', link: '/zh/guide/llm-prompts' },
-        { text: '性能基准', link: '/zh/guide/benchmarks' },
+        { text: '在大语言模型中使用 TOON', link: '/zh/guide/llm-prompts' },
+        { text: '基准测试', link: '/zh/guide/benchmarks' },
       ],
     },
     {

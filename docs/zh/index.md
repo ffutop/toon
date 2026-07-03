@@ -11,7 +11,7 @@ hero:
     alt: TOON Logo
   actions:
     - theme: brand
-      text: 什么是 TOON?
+      text: 什么是 TOON？
       link: /zh/guide/getting-started
     - theme: alt
       text: 基准测试
@@ -26,7 +26,7 @@ hero:
 features:
   - title: 节省 Token 且准确率高
     icon: 📊
-    details: 在 4 个大语言模型的混合结构基准测试中，TOON 的准确率达到 76.4%(JSON 为 75.0%)，同时所用 token 减少约 40%。
+    details: 在 4 个大语言模型的混合结构基准测试中，TOON 的准确率达到 76.4%（JSON 为 75.0%），同时所用 token 减少约 40%。
     link: /zh/guide/benchmarks
   - title: JSON 数据模型
     icon: 🔁

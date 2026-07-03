@@ -245,4 +245,4 @@ console.log(JSON.stringify(data, null, 2))
 
 ## 接下来去哪里
 
-现在你已经看过了第一个 TOON 文档，接下来可以阅读 [格式概览](/zh/guide/format-overview) 了解完整的语法细节(对象、数组、引号规则、键折叠)，然后了解 [在 LLM 中使用 TOON](/zh/guide/llm-prompts)，看看如何在提示词中有效使用它。想了解实现细节，可以查阅 [API 参考](/zh/reference/api)(TypeScript)或 [规范](/zh/reference/spec)（与语言无关的规范性规则）。
+现在你已经看过了第一个 TOON 文档，接下来可以阅读 [格式概览](/zh/guide/format-overview) 了解完整的语法细节（对象、数组、引号规则、键折叠），然后了解 [在大语言模型中使用 TOON](/zh/guide/llm-prompts)，看看如何在提示词中有效使用它。想了解实现细节，可以查阅 [API 参考](/zh/reference/api)(TypeScript)或 [规范](/zh/reference/spec)（与语言无关的规范性规则）。
