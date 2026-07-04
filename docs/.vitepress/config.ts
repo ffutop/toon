@@ -7,6 +7,9 @@ import { description, github, name, ogImage, ogUrl, releases, twitterImage, vers
 export default defineConfig({
   title: name,
   description,
+  sitemap: {
+    hostname: ogUrl,
+  },
 
   rewrites: {
     // Chinese homepage becomes the site root
