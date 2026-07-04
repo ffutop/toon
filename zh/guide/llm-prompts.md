@@ -109,7 +109,7 @@ import { encodeLines } from '@toon-format/toon'
 
 const largeData = await fetchThousandsOfRecords()
 
-// 流式处理大型数据集,而不必将完整字符串加载到内存中
+// 流式处理大型数据集，而不必将完整字符串加载到内存中
 for (const line of encodeLines(largeData, { delimiter: '\t' })) {
   process.stdout.write(`${line}\n`)
 }
