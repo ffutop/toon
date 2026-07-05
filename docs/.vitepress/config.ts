@@ -249,7 +249,7 @@ function sidebarEn(): DefaultTheme.SidebarItem[] {
 function navZh(): DefaultTheme.NavItem[] {
   return [
     {
-      text: '演练场',
+      text: '在线体验',
       link: '/zh/playground',
     },
     {
@@ -273,14 +273,14 @@ function navZh(): DefaultTheme.NavItem[] {
         { text: 'API', link: '/zh/reference/api' },
         { text: '语法速查表', link: '/zh/reference/syntax-cheatsheet' },
         { text: '规范', link: '/zh/reference/spec' },
-        { text: '效率形式化', link: '/zh/reference/efficiency-formalization' },
+        { text: '字节级效率模型', link: '/zh/reference/efficiency-formalization' },
       ],
     },
     {
       text: '生态',
       activeMatch: '^/zh/ecosystem/',
       items: [
-        { text: '工具与演练场', link: '/zh/ecosystem/tools-and-playgrounds' },
+        { text: '工具与在线体验', link: '/zh/ecosystem/tools-and-playgrounds' },
         { text: '实现列表', link: '/zh/ecosystem/implementations' },
       ],
     },
@@ -310,24 +310,24 @@ function sidebarZh(): DefaultTheme.SidebarItem[] {
     {
       text: '工具',
       items: [
-        { text: '演练场', link: '/zh/playground' },
+        { text: '在线体验', link: '/zh/playground' },
         { text: 'CLI 参考', link: '/zh/cli/' },
       ],
     },
     {
       text: '生态',
       items: [
-        { text: '工具与演练场', link: '/zh/ecosystem/tools-and-playgrounds' },
+        { text: '工具与在线体验', link: '/zh/ecosystem/tools-and-playgrounds' },
         { text: '实现列表', link: '/zh/ecosystem/implementations' },
       ],
     },
     {
       text: '参考',
       items: [
-        { text: 'API(TypeScript)', link: '/zh/reference/api' },
+        { text: 'API (TypeScript)', link: '/zh/reference/api' },
         { text: '语法速查表', link: '/zh/reference/syntax-cheatsheet' },
         { text: '规范', link: '/zh/reference/spec' },
-        { text: '效率形式化', link: '/zh/reference/efficiency-formalization' },
+        { text: '字节级效率模型', link: '/zh/reference/efficiency-formalization' },
       ],
     },
   ]
