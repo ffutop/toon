@@ -34,11 +34,11 @@ TOON 文档始终使用 UTF-8 编码和 LF（`\n`）换行符；可选的 `chars
 [§2 数据模型](https://github.com/toon-format/spec/blob/main/SPEC.md#2-data-model)：
 规定了 JSON 数据模型（对象、数组、基本类型）、数组和对象的顺序要求，以及规范数字格式（位于 `[1e-6, 1e21)` 范围内或为零的值使用规范十进制；超出该范围允许使用指数记法）。
 
-[§3 编码归一化](https://github.com/toon-format/spec/blob/main/SPEC.md#3-encoding-normalization-reference-encoder)：
-定义了非 JSON 类型（Date、BigInt、NaN、Infinity、undefined 等）在编码前应如何归一化。编码器实现者应重点阅读这一节。
+[§3 编码规范化](https://github.com/toon-format/spec/blob/main/SPEC.md#3-encoding-normalization-reference-encoder)：
+定义了非 JSON 类型（Date、BigInt、NaN、Infinity、undefined 等）在编码前应如何规范化。编码器实现者应重点阅读这一节。
 
 [§4 解码解释](https://github.com/toon-format/spec/blob/main/SPEC.md#4-decoding-interpretation-reference-decoder)：
-规定了解码器应如何将文本 token 映射为宿主语言中的值（带引号的字符串、不带引号的基本类型，以及需要处理前导零的数字解析）。在参考实现中，解码器默认使用严格模式（`strict = true`）；严格模式错误见 §14。
+规定了解码器如何将文本标记映射为宿主语言中的值（带引号的字符串、不带引号的基本类型，以及解析数字时对前导零的处理）。在参考实现中，解码器默认启用严格模式（`strict = true`）；严格模式错误见 §14。
 
 ### 语法规则
 
@@ -61,21 +61,21 @@ TOON 文档始终使用 UTF-8 编码和 LF（`\n`）换行符；可选的 `chars
 列表项中对象的缩进规则（第一个字段位于连字符所在行），包括第一个字段为表格化数组时的规范模式（首部位于连字符所在行，行数据缩进深度为 +2，同级字段缩进深度为 +1）。
 
 [§11 分隔符](https://github.com/toon-format/spec/blob/main/SPEC.md#11-delimiters)：
-分隔符作用域（文档级分隔符与生效分隔符）、感知分隔符的引号处理，以及逗号、制表符、竖线分隔符的解析规则。
+分隔符作用域（文档级分隔符与生效分隔符）、基于分隔符的引号处理，以及逗号、制表符、竖线分隔符的解析规则。
 
 [§12 缩进与空白](https://github.com/toon-format/spec/blob/main/SPEC.md#12-indentation-and-whitespace)：
-编码要求（一致的空格缩进、缩进中不允许使用制表符、无尾随空格/换行符）以及解码规则（严格和非严格缩进处理）。
+编码要求（一致的空格缩进、缩进中不允许使用制表符、无行尾空格/换行符）以及解码规则（严格和非严格缩进处理）。
 
 ### 合规性与校验
 
 [§13 合规性与选项](https://github.com/toon-format/spec/blob/main/SPEC.md#13-conformance-and-options)：
-定义了合规性类别（编码器、解码器、校验器）、标准化选项，以及合规性检查清单。
+定义了合规类型（编码器、解码器、校验器）、标准化选项以及合规检查清单。
 
 [§13.4 键折叠与路径展开](https://github.com/toon-format/spec/blob/main/SPEC.md#134-key-folding-and-path-expansion)：
 可选的编码器特性（键折叠）和解码器特性（路径展开），用于折叠/展开带点号的路径；该节还包含深度合并语义，以及严格/非严格模式下的冲突解决方式。
 
-[§14 严格模式错误与诊断](https://github.com/toon-format/spec/blob/main/SPEC.md#14-strict-mode-errors-and-diagnostics-authoritative-checklist)：
-所有严格模式错误的**权威检查清单**：数组数量与宽度不匹配（§14.1）、语法和结构错误（§14.2）、路径展开冲突（§14.3），以及重复的同级键（§14.4）。
+[§14 严格模式下的错误与诊断](https://github.com/toon-format/spec/blob/main/SPEC.md#14-strict-mode-errors-and-diagnostics-authoritative-checklist)：
+严格模式下各类错误的**权威检查清单**：数组数量与宽度不匹配（§14.1）、语法和结构错误（§14.2）、路径展开冲突（§14.3），以及重复的同级键（§14.4）。
 
 ### 实现指导
 
@@ -83,10 +83,10 @@ TOON 文档始终使用 UTF-8 编码和 LF（`\n`）换行符；可选的 `chars
 与安全相关的注入风险、引号规则和严格模式检查。
 
 [§16 国际化](https://github.com/toon-format/spec/blob/main/SPEC.md#16-internationalization)：
-Unicode 处理，以及不依赖语言环境的数字格式化。
+Unicode 处理，以及不受语言环境影响的数字文本格式。
 
 [§17 IANA 考量](https://github.com/toon-format/spec/blob/main/SPEC.md#17-iana-considerations)：
-媒体类型注册计划及暂定状态。
+媒体类型注册计划及临时状态。
 
 [§18 版本管理与可扩展性](https://github.com/toon-format/spec/blob/main/SPEC.md#18-versioning-and-extensibility)：
 规范的演进方式：主版本和次版本变更，以及可扩展性策略。
@@ -94,8 +94,8 @@ Unicode 处理，以及不依赖语言环境的数字格式化。
 [§19 知识产权考量](https://github.com/toon-format/spec/blob/main/SPEC.md#19-intellectual-property-considerations)：
 规范的许可和知识产权条款。
 
-[附录 F：宿主类型归一化示例](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-f-host-type-normalization-examples-informative)：
-面向 Go、JavaScript、Python、Rust 和 Java 实现的非规范性指导，用于归一化各语言特有的类型。
+[附录 F：宿主类型规范化示例](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-f-host-type-normalization-examples-informative)：
+为 Go、JavaScript、Python、Rust 和 Java 实现提供参考说明，介绍各语言特有类型的规范化方式。
 
 [附录 C：测试套件与合规性](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-c-test-suite-and-compliance-informative)：
 位于 [github.com/toon-format/spec/tree/main/tests](https://github.com/toon-format/spec/tree/main/tests) 的参考测试套件，可用于校验各实现。
@@ -104,7 +104,7 @@ Unicode 处理，以及不依赖语言环境的数字格式化。
 
 | 章节 | 主题 | 何时阅读 |
 |---------|-------|--------------|
-| §1–4 | 数据模型、归一化、解码 | 实现编码器/解码器时 |
+| §1–4 | 数据模型、规范化、解码 | 实现编码器/解码器时 |
 | §5–6 | 语法、首部、根形式 | 实现解析器时 |
 | §7 | 字符串、键、引号、转义 | 实现字符串处理时 |
 | §8–10 | 对象、数组、列表项 | 实现结构编码时 |
@@ -130,7 +130,7 @@ Unicode 处理，以及不依赖语言环境的数字格式化。
 - 按 §2 输出数字（对于 `[1e-6, 1e21)` 范围内或为零的值使用规范十进制；超出该范围允许使用指数记法）
 - 将 `-0` 转换为 `0`，将 `NaN`/±Infinity 转换为 `null`
 - 以小写字面量形式输出布尔值和 null（`true`、`false`、`null`）
-- 不含尾随空格或尾随换行符
+- 不得包含行尾空格或末尾换行符
 - 启用 `keyFolding="safe"` 时，折叠必须遵循 §13.4：
   - 只折叠合法标识符片段的键（字母/数字/下划线，不含点号），
   - 不得与现有的同级键产生冲突，
@@ -157,7 +157,7 @@ Unicode 处理，以及不依赖语言环境的数字格式化。
 
 校验器应当验证：
 - 结构性合规（首部、缩进、列表标记）
-- 空白不变式（无尾随空格/换行符）
+- 空白不变式（无行尾空格/换行符）
 - 首部与行数据之间的分隔符一致性
 - 实际数组长度与声明的 `[N]` 相符
 - 所有严格模式要求（包括启用时的路径展开冲突）
