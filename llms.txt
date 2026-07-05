@@ -18,7 +18,7 @@
 - [Syntax Cheatsheet](/en/reference/syntax-cheatsheet.md): JSON-to-TOON mappings at a glance for objects, arrays, quoting, key folding, and type conversions.
 - [Tools and Playgrounds](/en/ecosystem/tools-and-playgrounds.md): TOON playgrounds, CLI, editor support, and ecosystem tools.
 - [TOON vs JSON: Byte-Level Efficiency Model](/en/reference/efficiency-formalization.md): Mathematical model of TOON's byte-level overhead vs JSON across structure families, with formulas and worked examples.
-- [TOON 与 JSON 对比：字节级效率模型](/zh/reference/efficiency-formalization.md): 跨结构类型对比 TOON 与 JSON 字节级开销的数学模型，附带公式与实例推导。
+- [TOON 与 JSON 对比：字节级效率模型](/zh/reference/efficiency-formalization.md): TOON 与 JSON 在不同结构类型下的字节级开销模型，包含公式和实例推导。
 - [Using TOON with LLMs](/en/guide/llm-prompts.md): Prompting strategies for sending TOON to LLMs and validating TOON they generate, with examples.
 - [命令行接口](/zh/cli.md): 从命令行将 JSON 转换为 TOON,或反向转换,支持 token 统计、流式处理和分隔符选项。
 - [在大语言模型中使用 TOON](/zh/guide/llm-prompts.md): 向大语言模型发送 TOON 以及校验其生成的 TOON 的提示策略，附带示例。
