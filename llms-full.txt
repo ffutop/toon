@@ -1,15 +1,145 @@
 ---
-url: /en/reference/api.md
-description: >-
-  TypeScript and JavaScript encode and decode functions, options, error types,
-  and streaming decoders for @toon-format/toon.
+url: /zh/guide/getting-started.md
+description: TOON 是什么、何时使用它，以及使用 TypeScript 库进行编码/解码的第一个示例。
 ---
 
-# API Reference
+# 快速开始
 
-TypeScript/JavaScript API documentation for the `@toon-format/toon` package. For format rules, see the [Format Overview](/guide/format-overview) or the [Specification](/reference/spec). For other languages, see [Implementations](/ecosystem/implementations).
+## 什么是 TOON ？
 
-## Installation
+**面向 Token 的对象表示法(Token-Oriented Object Notation)** 是一种紧凑、人类可读的 JSON 数据模型编码方式，能够最大限度地减少 token 消耗，并让大语言模型更可靠地解析结构。它专为大语言模型输入场景设计，可作为你现有 JSON 的即插即用、无损编码形式。
+
+TOON 结合了 YAML 基于缩进的嵌套对象结构，以及 CSV 风格的表格布局（用于结构一致的数组）。TOON 最适合的场景是“结构一致的对象数组”（每行有多个字段，且各条目结构相同），在提供 CSV 般紧凑性的同时，还增加了明确的结构标记，帮助大语言模型更可靠地解析和校验数据。
+
+可以把它看作一层“翻译层”：在程序中照常使用 JSON，而在发送给大语言模型之前将其编码为 TOON。
+
+### 为什么选择 TOON ？
+
+标准 JSON 冗长且消耗大量 token。对于结构一致的对象数组，JSON 会为每条记录重复每一个字段名：
+
+```json
+{
+  "users": [
+    { "id": 1, "name": "Alice", "role": "admin" },
+    { "id": 2, "name": "Bob", "role": "user" }
+  ]
+}
+```
+
+YAML 通过缩进代替大括号减少了一些冗余：
+
+```yaml
+users:
+  - id: 1
+    name: Alice
+    role: admin
+  - id: 2
+    name: Bob
+    role: user
+```
+
+TOON 更进一步，只声明一次字段，然后数据逐行流式呈现：
+
+```yaml
+users[2]{id,name,role}:
+  1,Alice,admin
+  2,Bob,user
+```
+
+`[2]` 声明了数组长度，使大语言模型能够回答“数据集有多大”之类的问题，并检测内容是否被截断。`{id,name,role}` 声明了字段名。每条记录（即每一行）都由一份紧凑的逗号分隔值列表构成。这种模式贯穿 TOON 始终：结构只声明一次，数据紧凑地流式呈现。最终效果接近 CSV 的信息密度，同时又保留了显式的结构信息。
+
+下面是一个更贴近实际场景的例子，展示 TOON 如何同时处理嵌套对象和表格化数组：
+
+::: code-group
+
+```json [JSON (235 个 token)]
+{
+  "context": {
+    "task": "Our favorite hikes together",
+    "location": "Boulder",
+    "season": "spring_2025"
+  },
+  "friends": ["ana", "luis", "sam"],
+  "hikes": [
+    {
+      "id": 1,
+      "name": "Blue Lake Trail",
+      "distanceKm": 7.5,
+      "elevationGain": 320,
+      "companion": "ana",
+      "wasSunny": true
+    },
+    {
+      "id": 2,
+      "name": "Ridge Overlook",
+      "distanceKm": 9.2,
+      "elevationGain": 540,
+      "companion": "luis",
+      "wasSunny": false
+    },
+    {
+      "id": 3,
+      "name": "Wildflower Loop",
+      "distanceKm": 5.1,
+      "elevationGain": 180,
+      "companion": "sam",
+      "wasSunny": true
+    }
+  ]
+}
+```
+
+```yaml [TOON (106 个 token)]
+context:
+  task: Our favorite hikes together
+  location: Boulder
+  season: spring_2025
+friends[3]: ana,luis,sam
+hikes[3]{id,name,distanceKm,elevationGain,companion,wasSunny}:
+  1,Blue Lake Trail,7.5,320,ana,true
+  2,Ridge Overlook,9.2,540,luis,false
+  3,Wildflower Loop,5.1,180,sam,true
+```
+
+:::
+
+注意 TOON 是如何把 YAML 的缩进风格用于 `context` 对象、把内联格式用于基本类型数组 `friends`、把表格格式用于结构化数组 `hikes` 的。每种格式都会根据数据结构自动选择。
+
+### 设计目标
+
+TOON 针对特定使用场景进行了优化。它旨在：
+
+* 通过只声明一次结构并流式呈现数据，让结构一致的对象数组尽可能紧凑。
+* 保持完全无损且具有确定性——往返转换会保留所有数据和结构。
+* 通过显式的结构标记，让大语言模型和人类都能简单、稳健地解析。
+* 提供校验护栏（数组长度、字段数量），帮助检测截断和格式错误的输出。
+
+## 何时使用 TOON
+
+TOON 在处理“结构一致的对象数组”（即各条目结构相同的数据）时表现出色。对于大语言模型提示词，该格式能生成确定性的、极少使用引号的文本，并带有内置校验。显式的数组长度(`[N]`)和字段头(`{fields}`)有助于检测截断和格式错误的数据，同时表格化结构只需声明一次字段，而不必在每一行中重复。
+
+::: tip
+TOON 格式已经稳定，但也仍在持续演进中。一切都不是一成不变的——欢迎通过为 [规范](https://github.com/toon-format/spec) 做贡献或分享反馈来帮助塑造它的未来方向。
+:::
+
+## 何时不使用 TOON
+
+TOON 并非总是最佳选择。在以下情况下可以考虑其他方案：
+
+* **深度嵌套或结构不一致的数据**（表格化适用率 ≈ 0%）：JSON 压缩版通常使用更少的 token。例如：具有多层嵌套的复杂配置对象。
+* **半一致的数组**（表格化适用率约 40%–60%）：节省的 token 会减少。如果你的处理流程已经依赖 JSON，建议优先使用 JSON。
+* **纯表格数据**：对于扁平表格，CSV 比 TOON 更小。TOON 会增加少量开销（约 5%–10%），以提供能提升大语言模型可靠性的结构（数组长度声明、字段头、分隔符作用域）。
+* **对延迟敏感的应用**：请在你自己的实际环境中进行基准测试。某些部署场景（尤其是本地/量化模型）处理紧凑 JSON 的速度可能反而更快，尽管 TOON 的 token 数更低。
+
+::: info
+关于不同结构下基于数据的对比，请参阅 [基准测试](/zh/guide/benchmarks)。在针对延迟进行优化时，请分别测量 TOON 和 JSON 压缩版的首字时间(TTFT)、每秒 token 数和总耗时，并在你的具体环境中选择更快的那一个。
+:::
+
+## 安装
+
+### TypeScript 库
+
+使用你偏好的包管理器安装该库：
 
 ::: code-group
 
@@ -27,751 +157,1758 @@ yarn add @toon-format/toon
 
 :::
 
-## Encoding Functions
+### CLI
 
-### `encode(input, options?)`
-
-Converts any JSON-serializable value to TOON format.
-
-```ts
-import { encode } from '@toon-format/toon'
-
-const toon = encode(data, {
-  indent: 2,
-  delimiter: ',',
-  keyFolding: 'off',
-  flattenDepth: Infinity
-})
-```
-
-#### Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `input` | `unknown` | Any JSON-serializable value (object, array, primitive, or nested structure) |
-| `options` | `EncodeOptions?` | Optional encoding options (see [Configuration Reference](#configuration-reference)) |
-
-#### Return Value
-
-Returns a TOON-formatted string with no trailing newline or spaces.
-
-#### Type Normalization
-
-Non-JSON-serializable values are normalized before encoding:
-
-| Input | Output |
-|-------|--------|
-| `Object` with `toJSON()` method | Result of calling `toJSON()`, recursively normalized |
-| Finite number in `[1e-6, 1e21)` (or zero) | Canonical decimal (e.g., `1e6` → `1000000`, `-0` → `0`) |
-| Finite number outside that range | Exponent form permitted (e.g., `1e-7`, `1e+21`) |
-| `NaN`, `Infinity`, `-Infinity` | `null` |
-| `BigInt` (within safe range) | Number |
-| `BigInt` (out of range) | Quoted decimal string (e.g., `"9007199254740993"`) |
-| `Date` | ISO string in quotes (e.g., `"2025-01-01T00:00:00.000Z"`) |
-| `Set` | Array of normalized values |
-| `Map` | Object with `String(key)` keys |
-| `undefined`, `function`, `symbol` | `null` |
-
-::: info
-TOON itself doesn't specify how `Date` should be encoded – the spec leaves this to implementations. This library emits an ISO 8601 string in quotes; other implementations may choose differently.
-:::
-
-#### Example
-
-```ts
-import { encode } from '@toon-format/toon'
-
-const items = [
-  { sku: 'A1', qty: 2, price: 9.99 },
-  { sku: 'B2', qty: 1, price: 14.5 }
-]
-
-console.log(encode({ items }))
-```
-
-**Output:**
-
-```yaml
-items[2]{sku,qty,price}:
-  A1,2,9.99
-  B2,1,14.5
-```
-
-### `encodeLines(input, options?)`
-
-**Preferred method for streaming TOON output.** Converts any JSON-serializable value to TOON format as a sequence of lines, without building the full string in memory. Suitable for streaming large outputs to files, HTTP responses, or process stdout.
-
-```ts
-import { encodeLines } from '@toon-format/toon'
-
-// Stream to stdout (Node.js)
-for (const line of encodeLines(data)) {
-  process.stdout.write(`${line}\n`)
-}
-
-// Write to file line-by-line
-const lines = encodeLines(data, { indent: 2, delimiter: '\t' })
-for (const line of lines) {
-  await writeToStream(`${line}\n`)
-}
-
-// Collect to array
-const lineArray = Array.from(encodeLines(data))
-```
-
-#### Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `input` | `unknown` | Any JSON-serializable value (object, array, primitive, or nested structure) |
-| `options` | `EncodeOptions?` | Optional encoding options (see [Configuration Reference](#configuration-reference)) |
-
-#### Return Value
-
-Returns an `Iterable<string>` that yields TOON lines one at a time. **Each yielded string is a single line without a trailing newline character** – you must add `\n` when writing to streams or stdout.
-
-::: info Relationship to `encode()`
-`encode(value, options)` is equivalent to:
-
-```ts
-Array.from(encodeLines(value, options)).join('\n')
-```
-
-:::
-
-#### Example
-
-```ts
-import { createWriteStream } from 'node:fs'
-import { encodeLines } from '@toon-format/toon'
-
-const data = {
-  items: Array.from({ length: 100000 }, (_, i) => ({
-    id: i,
-    name: `Item ${i}`,
-    value: Math.random()
-  }))
-}
-
-// Stream large dataset to file
-const stream = createWriteStream('output.toon')
-for (const line of encodeLines(data, { delimiter: '\t' })) {
-  stream.write(`${line}\n`)
-}
-stream.end()
-```
-
-### Replacer Function
-
-The `replacer` option allows you to transform or filter values during encoding. It works similarly to `JSON.stringify`'s replacer parameter, but with path tracking for more precise control.
-
-#### Type Signature
-
-```typescript
-type EncodeReplacer = (
-  key: string,
-  value: JsonValue,
-  path: readonly (string | number)[]
-) => unknown
-```
-
-#### Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `key` | `string` | Property name, array index (as string), or empty string for root |
-| `value` | `JsonValue` | The normalized value at this location |
-| `path` | `readonly (string \| number)[]` | Path from root to current value |
-
-#### Return Value
-
-* Return the value unchanged to keep it
-* Return a different value to replace it (will be normalized)
-* Return `undefined` to omit properties/array elements
-* For root value, `undefined` means "no change" (root cannot be omitted)
-
-#### Examples
-
-**Filtering sensitive data:**
-
-```typescript
-import { encode } from '@toon-format/toon'
-
-const data = {
-  user: { name: 'Alice', password: 'secret123', email: 'alice@example.com' }
-}
-
-function replacer(key, value) {
-  if (key === 'password')
-    return undefined
-  return value
-}
-
-console.log(encode(data, { replacer }))
-```
-
-**Output:**
-
-```yaml
-user:
-  name: Alice
-  email: alice@example.com
-```
-
-**Transforming values:**
-
-```typescript
-const data = { user: 'alice', role: 'admin' }
-
-function replacer(key, value) {
-  if (typeof value === 'string')
-    return value.toUpperCase()
-  return value
-}
-
-console.log(encode(data, { replacer }))
-```
-
-**Output:**
-
-```yaml
-user: ALICE
-role: ADMIN
-```
-
-**Path-based transformations:**
-
-```typescript
-const data = {
-  metadata: { created: '2025-01-01' },
-  user: { created: '2025-01-02' }
-}
-
-function replacer(key, value, path) {
-  // Add timezone info only to top-level metadata
-  if (path.length === 1 && path[0] === 'metadata' && key === 'created') {
-    return `${value}T00:00:00Z`
-  }
-  return value
-}
-
-console.log(encode(data, { replacer }))
-```
-
-**Output:**
-
-```yaml
-metadata:
-  created: "2025-01-01T00:00:00Z"
-user:
-  created: 2025-01-02
-```
-
-::: info Replacer Execution Order
-The replacer is called in a depth-first manner:
-
-1. Root value first (key = `''`, path = `[]`)
-2. Then each property/element (with proper key and path)
-3. Values are re-normalized after replacement
-4. Children are processed after parent transformation
-   :::
-
-::: warning Array Indices as Strings
-Following `JSON.stringify` behavior, array indices are passed as strings (`'0'`, `'1'`, `'2'`, etc.) to the replacer, not as numbers.
-:::
-
-## Decoding Functions
-
-### `decode(input, options?)`
-
-Converts a TOON-formatted string back to JavaScript values.
-
-```ts
-import { decode } from '@toon-format/toon'
-
-const data = decode(toon, {
-  indent: 2,
-  strict: true,
-  expandPaths: 'off'
-})
-```
-
-#### Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `input` | `string` | A TOON-formatted string to parse |
-| `options` | `DecodeOptions?` | Optional decoding options (see [Configuration Reference](#configuration-reference)) |
-
-#### Return Value
-
-Returns a JavaScript value (object, array, or primitive) representing the parsed TOON data.
-
-#### Example
-
-```ts
-import { decode } from '@toon-format/toon'
-
-const toon = `
-items[2]{sku,qty,price}:
-  A1,2,9.99
-  B2,1,14.5
-`
-
-const data = decode(toon)
-console.log(data)
-```
-
-**Output:**
-
-```json
-{
-  "items": [
-    { "sku": "A1", "qty": 2, "price": 9.99 },
-    { "sku": "B2", "qty": 1, "price": 14.5 }
-  ]
-}
-```
-
-### `decodeFromLines(lines, options?)`
-
-Decodes TOON format from pre-split lines into a JavaScript value. This is a streaming-friendly wrapper around the event-based decoder that builds the full value in memory.
-
-Useful when you already have lines as an array or iterable (e.g., from file streams, readline interfaces, or network responses) and want the standard decode behavior with path expansion support.
-
-#### Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `lines` | `Iterable<string>` | Iterable of TOON lines (without trailing newlines) |
-| `options` | `DecodeOptions?` | Optional decoding configuration (see [Configuration Reference](#configuration-reference)) |
-
-#### Return Value
-
-Returns a `JsonValue` (the parsed JavaScript value: object, array, or primitive).
-
-#### Example
-
-**Basic usage with arrays:**
-
-```ts
-import { decodeFromLines } from '@toon-format/toon'
-
-const lines = ['name: Alice', 'age: 30']
-const value = decodeFromLines(lines)
-// { name: 'Alice', age: 30 }
-```
-
-**Streaming from Node.js readline:**
-
-```ts
-import { createReadStream } from 'node:fs'
-import { createInterface } from 'node:readline'
-import { decodeFromLines } from '@toon-format/toon'
-
-const rl = createInterface({
-  input: createReadStream('data.toon'),
-  crlfDelay: Infinity,
-})
-
-const value = decodeFromLines(rl)
-console.log(value)
-```
-
-**With path expansion:**
-
-```ts
-const lines = ['user.name: Alice', 'user.age: 30']
-const value = decodeFromLines(lines, { expandPaths: 'safe' })
-// { user: { name: 'Alice', age: 30 } }
-```
-
-### Choosing the Right Decoder
-
-| Function | Input | Output | Async | Path Expansion | Use When |
-|----------|-------|--------|-------|----------------|----------|
-| `decode()` | String | Value | No | Yes | You have a complete TOON string |
-| `decodeFromLines()` | Lines | Value | No | Yes | You have lines and want the full value |
-| `decodeStreamSync()` | Lines | Events | No | No | You need event-by-event processing (sync) |
-| `decodeStream()` | Lines | Events | Yes | No | You need event-by-event processing (async) |
-
-::: info Key Differences
-
-* **Value vs. Events**: Functions ending in `Stream` yield events without building the full value in memory.
-* **Path expansion**: Only `decode()` and `decodeFromLines()` support `expandPaths: 'safe'`.
-* **Async support**: Only `decodeStream()` accepts async iterables (useful for file/network streams).
-  :::
-
-## Streaming Decoders
-
-### `decodeStreamSync(lines, options?)`
-
-Synchronously decodes TOON lines into a stream of JSON events. This function yields structured events that represent the JSON data model without building the full value tree.
-
-Useful for streaming processing, custom transformations, or memory-efficient parsing of large datasets where you don't need the full value in memory.
-
-::: tip Event Streaming
-This is a low-level API that returns individual parse events. For most use cases, [`decodeFromLines()`](#decodefromlines-lines-options) or [`decode()`](#decode-input-options) are more convenient.
-
-Path expansion (`expandPaths: 'safe'`) is **not supported** in streaming mode since it requires the full value tree.
-:::
-
-#### Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `lines` | `Iterable<string>` | Iterable of TOON lines (without trailing newlines) |
-| `options` | `DecodeStreamOptions?` | Optional streaming decoding configuration (see [Configuration Reference](#configuration-reference)) |
-
-#### Return Value
-
-Returns an `Iterable<JsonStreamEvent>` that yields structured events (see [TypeScript Types](#typescript-types) for event structure).
-
-#### Example
-
-**Basic event streaming:**
-
-```ts
-import { decodeStreamSync } from '@toon-format/toon'
-
-const lines = ['name: Alice', 'age: 30']
-
-for (const event of decodeStreamSync(lines)) {
-  console.log(event)
-}
-
-// Output:
-// { type: 'startObject' }
-// { type: 'key', key: 'name' }
-// { type: 'primitive', value: 'Alice' }
-// { type: 'key', key: 'age' }
-// { type: 'primitive', value: 30 }
-// { type: 'endObject' }
-```
-
-**Custom processing:**
-
-```ts
-import { decodeStreamSync } from '@toon-format/toon'
-
-const lines = ['users[2]{id,name}:', '  1,Alice', '  2,Bob']
-let userCount = 0
-
-for (const event of decodeStreamSync(lines)) {
-  if (event.type === 'endObject' && userCount < 2) {
-    userCount++
-    console.log(`Processed user ${userCount}`)
-  }
-}
-```
-
-### `decodeStream(source, options?)`
-
-Asynchronously decodes TOON lines into a stream of JSON events. This is the async version of [`decodeStreamSync()`](#decodestreamsync-lines-options), supporting both synchronous and asynchronous iterables.
-
-Useful for processing file streams, network responses, or other async sources where you want to handle data incrementally as it arrives.
-
-#### Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `source` | `AsyncIterable<string>` | `Iterable<string>` | Async or sync iterable of TOON lines (without trailing newlines) |
-| `options` | `DecodeStreamOptions?` | Optional streaming decoding configuration (see [Configuration Reference](#configuration-reference)) |
-
-#### Return Value
-
-Returns an `AsyncIterable<JsonStreamEvent>` that yields structured events asynchronously (see [TypeScript Types](#typescript-types) for event structure).
-
-#### Example
-
-**Streaming from file:**
-
-```ts
-import { createReadStream } from 'node:fs'
-import { createInterface } from 'node:readline'
-import { decodeStream } from '@toon-format/toon'
-
-const fileStream = createReadStream('data.toon', 'utf-8')
-const rl = createInterface({ input: fileStream, crlfDelay: Infinity })
-
-for await (const event of decodeStream(rl)) {
-  console.log(event)
-  // Process events as they arrive
-}
-```
-
-## Error Handling
-
-Decoding throws a `ToonDecodeError` when input cannot be parsed. The class extends `SyntaxError`, so existing `error instanceof SyntaxError` checks keep working without code changes.
-
-### `ToonDecodeError`
-
-```ts
-import { ToonDecodeError } from '@toon-format/toon'
-```
-
-#### Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | `'ToonDecodeError'` | Discriminator – `error.name === 'ToonDecodeError'` |
-| `message` | `string` | Human-readable message; prefixed with `Line N: ` when a line is known |
-| `line` | `number?` | 1-based line number where the error was detected |
-| `source` | `string?` | Raw source line (including its leading whitespace) |
-| `cause` | `unknown?` | The original error when the decoder enriched a lower-level parser failure |
-
-The `line` and `source` fields are populated for every error that has line context – essentially every parse error during normal decoding. The `cause` chain points back to the underlying `SyntaxError` or `TypeError` thrown by the token-level parser, so debuggers and verbose loggers can show the original frame.
-
-#### Example
-
-```ts
-import { decode, ToonDecodeError } from '@toon-format/toon'
-
-try {
-  decode('a:\n\tb: 1')
-}
-catch (error) {
-  if (error instanceof ToonDecodeError) {
-    console.error(`Line ${error.line}:`, error.source)
-    console.error(error.message)
-    // Line 2: 	b: 1
-    // Line 2: Tabs are not allowed in indentation in strict mode
-  }
-  else {
-    throw error
-  }
-}
-```
-
-::: info Backwards Compatibility
-`ToonDecodeError` extends `SyntaxError`. Code written against earlier versions that catches `SyntaxError` continues to match these errors. The class adds structured fields without removing anything.
-:::
-
-## Configuration Reference
-
-### `EncodeOptions`
-
-Configuration for [`encode()`](#encode-input-options) and [`encodeLines()`](#encodelines-input-options):
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `indent` | `number` | `2` | Number of spaces per indentation level |
-| `delimiter` | `','` | `'\t'` | `'\|'` | `','` | Delimiter for array values and tabular rows |
-| `keyFolding` | `'off'` | `'safe'` | `'off'` | Enable key folding to collapse single-key wrapper chains into dotted paths |
-| `flattenDepth` | `number` | `Infinity` | Maximum number of segments to fold when `keyFolding` is enabled (values 0-1 have no practical effect) |
-| `replacer` | `EncodeReplacer` | `undefined` | Optional hook to transform or omit values before encoding (see [Replacer Function](#replacer-function)) |
-
-**Delimiter options:**
+CLI 可以通过 `npx` 免安装使用，也可以全局安装：
 
 ::: code-group
 
-```ts [Comma (default)]
-encode(data, { delimiter: ',' })
+```bash [npx（无需安装）]
+npx @toon-format/cli input.json -o output.toon
 ```
 
-```ts [Tab]
-encode(data, { delimiter: '\t' })
+```bash [npm]
+npm install -g @toon-format/cli
 ```
 
-```ts [Pipe]
-encode(data, { delimiter: '|' })
+```bash [pnpm]
+pnpm add -g @toon-format/cli
+```
+
+```bash [yarn]
+yarn global add @toon-format/cli
 ```
 
 :::
 
-See [Delimiter Strategies](#delimiter-strategies) for guidance on choosing delimiters.
+完整的 CLI 文档请参阅 [CLI 参考](/zh/cli/)。
 
-### `DecodeOptions`
+## 媒体类型与文件扩展名
 
-Configuration for [`decode()`](#decode-input-options) and [`decodeFromLines()`](#decodefromlines-lines-options):
+按照惯例，TOON 文件使用 `.toon` 扩展名。对于 HTTP 传输，临时的媒体类型为 `text/toon`，并始终使用 UTF-8 编码。你可以显式指定 `charset=utf-8`，但这是可选的——UTF-8 是默认假设。这遵循了 [规范第 17 节](https://github.com/toon-format/spec/blob/main/SPEC.md#17-iana-considerations) 中所述的注册流程。
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `indent` | `number` | `2` | Expected number of spaces per indentation level |
-| `strict` | `boolean` | `true` | Enable strict validation (array counts, indentation, delimiter consistency) |
-| `expandPaths` | `'off'` | `'safe'` | `'off'` | Enable path expansion to reconstruct dotted keys into nested objects (pairs with `keyFolding: 'safe'`) |
+## 你的第一个示例
 
-By default (`strict: true`), the decoder validates input strictly:
+下面的示例使用 TypeScript 库进行演示，但同样的操作在任何拥有 TOON 实现的语言中都同样适用。
 
-* **Invalid escape sequences**: Throws on `\x`, unterminated strings, lone-surrogate `\uXXXX`
-* **Syntax errors**: Throws on missing colons, malformed headers
-* **Array length mismatches**: Throws when declared length doesn't match actual count
-* **Header delimiter mismatch**: Throws when the bracket-declared delimiter differs from the field-list delimiter (§14.2)
-* **Indentation errors**: Throws when leading spaces aren't exact multiples of `indent`
-* **Header structure**: Throws on leading-zero or non-integer array lengths and on intervening content between bracket/fields/colon
-* **Duplicate sibling keys**: Throws when an object has two children with the same key (§14.4)
-* **Path-expansion conflicts**: When `expandPaths: 'safe'` is set, throws on overlapping dotted paths that would collide
-
-All decode errors are thrown as [`ToonDecodeError`](#error-handling) instances with structured `line` and `source` fields.
-
-Set `strict: false` to skip these checks. Duplicate sibling keys and path-expansion conflicts then resolve with last-write-wins in document order.
-
-See [Key Folding & Path Expansion](#key-folding-path-expansion) for more details on path expansion behavior and conflict resolution.
-
-### `DecodeStreamOptions`
-
-Configuration for [`decodeStreamSync()`](#decodestreamsync-lines-options) and [`decodeStream()`](#decodestream-source-options):
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `indent` | `number` | `2` | Expected number of spaces per indentation level |
-| `strict` | `boolean` | `true` | Enable strict validation (array counts, indentation, delimiter consistency) |
-
-::: warning Path Expansion Not Supported
-Path expansion requires building the full value tree, which is incompatible with event streaming. Use [`decodeFromLines()`](#decodefromlines-lines-options) if you need path expansion.
-:::
-
-## TypeScript Types
-
-### `JsonStreamEvent`
-
-Events emitted by [`decodeStreamSync()`](#decodestreamsync-lines-options) and [`decodeStream()`](#decodestream-source-options):
+让我们用 TypeScript 库编码一个简单的数据集：
 
 ```ts
-type JsonStreamEvent
-  = | { type: 'startObject' }
-    | { type: 'endObject' }
-    | { type: 'startArray', length: number }
-    | { type: 'endArray' }
-    | { type: 'key', key: string, wasQuoted?: boolean }
-    | { type: 'primitive', value: JsonPrimitive }
-```
+import { encode } from '@toon-format/toon'
 
-### Delimiters
-
-```ts
-import { DEFAULT_DELIMITER, DELIMITERS } from '@toon-format/toon'
-
-DEFAULT_DELIMITER // ','
-DELIMITERS // { comma: ',', tab: '\t', pipe: '|' }
-```
-
-| Export | Description |
-|--------|-------------|
-| `DEFAULT_DELIMITER` | The default delimiter character (`,`) used when none is specified |
-| `DELIMITERS` | Frozen record mapping delimiter names to their characters |
-| `Delimiter` | Type union of valid delimiter characters: `',' \| '\t' \| '\|'` |
-| `DelimiterKey` | Type union of delimiter names: `'comma' \| 'tab' \| 'pipe'` |
-
-### Option Types
-
-| Export | Description |
-|--------|-------------|
-| `EncodeOptions` | Options accepted by [`encode()`](#encode-input-options) and [`encodeLines()`](#encodelines-input-options) |
-| `DecodeOptions` | Options accepted by [`decode()`](#decode-input-options) and [`decodeFromLines()`](#decodefromlines-lines-options) |
-| `DecodeStreamOptions` | Options accepted by [`decodeStreamSync()`](#decodestreamsync-lines-options) and [`decodeStream()`](#decodestream-source-options) |
-| `EncodeReplacer` | Signature of the [replacer function](#replacer-function) |
-| `ResolvedEncodeOptions` | `EncodeOptions` after defaults are applied (advanced) |
-| `ResolvedDecodeOptions` | `DecodeOptions` after defaults are applied (advanced) |
-
-## Guides & Examples
-
-### Round-Trip Compatibility
-
-TOON provides lossless round-trips after normalization:
-
-```ts
-import { decode, encode } from '@toon-format/toon'
-
-const original = {
+const data = {
   users: [
     { id: 1, name: 'Alice', role: 'admin' },
     { id: 2, name: 'Bob', role: 'user' }
   ]
 }
 
-const toon = encode(original)
-const restored = decode(toon)
-
-console.log(JSON.stringify(original) === JSON.stringify(restored))
-// true
+console.log(encode(data))
 ```
 
-**With Key Folding:**
+**输出：**
+
+```yaml
+users[2]{id,name,role}:
+  1,Alice,admin
+  2,Bob,user
+```
+
+### 解码到 JSON
+
+解码同样简单：
+
+```ts
+import { decode } from '@toon-format/toon'
+
+const toon = `
+users[2]{id,name,role}:
+  1,Alice,admin
+  2,Bob,user
+`
+
+const data = decode(toon)
+console.log(JSON.stringify(data, null, 2))
+```
+
+**输出：**
+
+```json
+{
+  "users": [
+    { "id": 1, "name": "Alice", "role": "admin" },
+    { "id": 2, "name": "Bob", "role": "user" }
+  ]
+}
+```
+
+往返转换是无损的：`decode(encode(x))` 始终等于 `x`（在对 `Date`、`NaN` 等非 JSON 类型进行归一化处理之后）。
+
+## 接下来去哪里
+
+现在你已经看过了第一个 TOON 文档，接下来可以阅读 [格式概览](/zh/guide/format-overview) 了解完整的语法细节（对象、数组、引号规则、键折叠），然后了解 [在大语言模型中使用 TOON](/zh/guide/llm-prompts)，看看如何在提示词中有效使用它。想了解实现细节，可以查阅 [API 参考](/zh/reference/api)(TypeScript)或 [规范](/zh/reference/spec)（与语言无关的规范性规则）。
+
+---
+
+---
+url: /zh/guide/format-overview.md
+description: 通过具体示例了解 TOON 语法——对象、数组、首部、键折叠和引号规则。
+---
+
+# 格式概览
+
+带有具体示例的 TOON 语法参考。入门介绍请参阅 [快速开始](/zh/guide/getting-started)。
+
+## 数据模型
+
+TOON 与 JSON 使用相同的方式对数据建模：
+
+* **基本类型(Primitives)**：字符串、数字、布尔值和 `null`
+* **对象(Objects)**：字符串键到值的映射
+* **数组(Arrays)**：值的有序序列
+
+### 根形式
+
+一个 TOON 文档可以表示不同的根形式：
+
+* **根对象**（最常见）：字段位于顶层（深度为 0），没有父键
+* **根数组**：以顶层（深度为 0）的 `[N]:` 或 `[N]{fields}:` 开头
+* **根基本类型**：单个基本类型值（字符串、数字、布尔值或 null）
+
+本指南中的大多数示例使用根对象，但该格式同等支持这三种形式（[规范第 5 节](https://github.com/toon-format/spec/blob/main/SPEC.md#5-concrete-syntax-and-root-form)）。
+
+## 对象
+
+### 简单对象
+
+带有基本类型值的对象使用 `key: value` 语法，每行一个字段：
+
+```yaml
+id: 123
+name: Ada
+active: true
+```
+
+缩进取代了 JSON 式的大括号。冒号后跟一个空格。
+
+### 嵌套对象
+
+嵌套对象增加一级缩进（默认：2 个空格）：
+
+```yaml
+user:
+  id: 123
+  name: Ada
+```
+
+当一个键以 `:` 结尾且同一行没有值时，它就表示接下来是一个嵌套对象。下一缩进层级的所有行都属于该对象。
+
+### 空对象
+
+根级别的空对象会产生一个空文档（没有任何行）。嵌套的空对象则表示为单独的 `key:`，没有子内容。
+
+## 数组
+
+TOON 会检测数组结构，并选择最高效的表示方式。数组总是在方括号中声明其长度：`[N]`。
+
+### 基本类型数组（内联）
+
+基本类型（字符串、数字、布尔值、null）的数组以内联形式呈现：
+
+```yaml
+tags[3]: admin,ops,dev
+```
+
+值之间用分隔符（默认为逗号）隔开。包含当前生效分隔符的字符串必须加引号。
+
+### 对象数组（表格化）
+
+当数组中的所有对象共享同一组基本类型值的键时，TOON 会使用表格化格式：
+
+::: code-group
+
+```yaml [基础表格化]
+items[2]{sku,qty,price}:
+  A1,2,9.99
+  B2,1,14.5
+```
+
+```yaml [值中包含空格]
+users[2]{id,name,role}:
+  1,Alice Admin,admin
+  2,"Bob Smith",user
+```
+
+:::
+
+首部 `items[2]{sku,qty,price}:` 声明了：
+
+* **数组长度**：`[2]` 表示 2 行
+* **字段名**：`{sku,qty,price}` 定义了各列
+* **生效分隔符**：逗号（默认）
+
+每一行的值都按字段列表的顺序排列，均为基本类型（字符串、数字、布尔值、null），彼此以分隔符隔开。
+
+> \[!NOTE]
+> 表格化格式需要满足三个条件：所有对象的字段集合完全相同（键相同，但每个对象内的顺序可以不同）；字段值仅包含基本类型（不允许嵌套数组或对象）；且每个对象至少包含一个键。如果数组中包含出现空对象 `{}`，则会回退到下文所述的展开列表形式。
+
+### 混合与非一致数组
+
+不满足表格化条件的数组会使用带连字符标记的列表格式：
+
+```yaml
+items[3]:
+  - 1
+  - a: 1
+  - text
+```
+
+每个元素以 `- ` 开头，缩进比父级数组首部深一级。
+
+### 作为列表项的对象
+
+当数组元素是对象时，它会以列表项的形式出现：
+
+```yaml
+items[2]:
+  - id: 1
+    name: First
+  - id: 2
+    name: Second
+    extra: true
+```
+
+当一个表格化数组是列表项对象的第一个字段时，表格化首部会出现在连字符所在的那一行；此时行数据缩进两级，其他字段缩进一级：
+
+```yaml
+items[1]:
+  - users[2]{id,name}:
+      1,Ada
+      2,Bob
+    status: active
+```
+
+当对象只有一个表格化字段时，同样的模式也适用：
+
+```yaml
+items[1]:
+  - users[2]{id,name}:
+      1,Ada
+      2,Bob
+```
+
+这是“第一个字段为表格化数组”的列表项对象的规范编码方式。
+
+### 数组的数组
+
+当数组的内部元素是基本类型数组时：
+
+```yaml
+pairs[2]:
+  - [2]: 1,2
+  - [2]: 3,4
+```
+
+每个内部数组的首部都出现在它所在的列表项那一行。
+
+当内部数组本身是对象数组或非一致数组时，同样的 `- [N]:` 首部会出现在连字符所在行，嵌套项紧随其后并再深一级缩进：
+
+```yaml
+items[3]:
+  - summary
+  - id: 1
+    name: Ada
+  - [2]:
+    - id: 2
+    - status: draft
+```
+
+### 空数组
+
+字段中的空数组渲染为 `key: []`，根级别的空数组则渲染为 `[]`：
+
+```yaml
+items: []
+```
+
+出于向后兼容的考虑，旧式的 `items[0]:` 形式在解码时仍会被支持。
+
+## 数组首部
+
+### 首部语法
+
+数组首部遵循以下模式：
+
+```
+key[N<delimiter?>]<{fields}>:
+```
+
+其中：
+
+* **N** 是非负整数长度
+* **delimiter**（可选）显式声明生效的分隔符：
+  * 不填 → 英文逗号分隔
+  * `\t`（制表符）→ 制表符分隔
+  * `|` → 竖线分隔
+* **fields**（可选，用于表格化数组）：`{field1,field2,field3}`
+
+> \[!NOTE]
+> 数组长度 `[N]` 有助于大语言模型校验结构。如果你要求模型生成 TOON 输出，显式的长度声明能让你检测出内容是否被截断或出现格式错误。
+
+### 分隔符选项
+
+TOON 支持三种分隔符：逗号（默认）、制表符和竖线。分隔符的作用范围仅限于声明它的那个数组首部。
+
+::: code-group
+
+```yaml [逗号（默认）]
+items[2]{sku,name,qty,price}:
+  A1,Widget,2,9.99
+  B2,Gadget,1,14.5
+```
+
+```yaml [制表符]
+items[2	]{sku	name	qty	price}:
+  A1	Widget	2	9.99
+  B2	Gadget	1	14.5
+```
+
+```yaml [竖线]
+items[2|]{sku|name|qty|price}:
+  A1|Widget|2|9.99
+  B2|Gadget|1|14.5
+```
+
+:::
+
+制表符和竖线分隔符会显式编码在首部的方括号和字段大括号中。在某个数组的作用范围内，只有生效的分隔符会触发引号处理——其他分隔符字符则作为字面数据处理。对象字段的值（`key: value`）遵循文档级分隔符(§11.1)，而不受周围任何数组生效分隔符的影响。
+
+> \[!TIP]
+> 制表符分隔通常比逗号分隔更高效地进行 token 化，尤其是在引号字符串较少的数据中。使用 `encode(data, { delimiter: '\t' })` 可以进一步节省 token。
+
+## 键折叠（可选）
+
+键折叠是一项可选的编码器特性（自规范 v1.5 起提供），它会将单键对象组成的链条折叠为以点分隔的路径，从而为深度嵌套的数据减少 token 消耗。
+
+### 基础折叠
+
+标准嵌套：
+
+```yaml
+data:
+  metadata:
+    items[2]: a,b
+```
+
+启用键折叠后(`keyFolding: 'safe'`)：
+
+```yaml
+data.metadata.items[2]: a,b
+```
+
+三个嵌套对象被折叠为一个以点分隔的键 `data.metadata.items`。
+
+### 折叠适用的条件
+
+一条对象链在满足以下条件时可以被折叠：
+
+* 链中的每个对象都恰好只有一个键（指向下一个对象或一个叶子值）
+* 叶子值是基本类型、数组或空对象
+* 所有片段都是合法的标识符片段（仅限字母、数字、下划线；片段内不能有点号）
+* 折叠后得到的键不会与已有的键发生冲突
+
+::: details 高级折叠规则
+**片段要求（safe 模式）：**
+
+* 所有被折叠的片段都必须匹配 `^[A-Za-z_][A-Za-z0-9_]*$`（不能包含点、连字符或其他特殊字符）
+* 任何片段都不能按规范 §7.3 加引号
+* 折叠后得到的键不能与同一深度下任何已有的同级字面键相同（避免冲突）
+
+**深度限制：**
+
+* `flattenDepth` 选项（默认：`Infinity`）控制要折叠多少个片段
+* `flattenDepth: 2` 只折叠两段的链：`{a: {b: val}}` → `a.b: val`
+* 小于 2 的值没有实际效果
+
+**通过路径展开实现往返转换：**
+若要在解码时还原原始结构，请使用 `expandPaths: 'safe'`。这会依据相同的安全规则，将带点号的键重新拆分为嵌套对象）[规范 §13.4](https://github.com/toon-format/spec/blob/main/SPEC.md#134-key-folding-and-path-expansion)）。
+:::
+
+### 通过路径展开实现往返转换
+
+在解码使用了键折叠的 TOON 时，启用路径展开以恢复嵌套结构：
 
 ```ts
 import { decode, encode } from '@toon-format/toon'
 
 const original = { data: { metadata: { items: ['a', 'b'] } } }
 
-// Encode with folding
+// 使用折叠进行编码
 const toon = encode(original, { keyFolding: 'safe' })
 // → "data.metadata.items[2]: a,b"
 
-// Decode with expansion
+// 使用展开进行解码
 const restored = decode(toon, { expandPaths: 'safe' })
 // → { data: { metadata: { items: ['a', 'b'] } } }
-
-console.log(JSON.stringify(original) === JSON.stringify(restored))
-// true
 ```
 
-### Key Folding & Path Expansion
+路径展开默认关闭，因此带点号的键在未显式启用该选项时会被视为字面键处理。
 
-**Key Folding** (`keyFolding: 'safe'`) collapses single-key wrapper chains during encoding:
+## 引号与类型
+
+### 字符串何时需要加引号
+
+TOON **只在必要时**才为字符串加引号，以最大化 token 效率。以下情况字符串必须加引号：
+
+* 空字符串(`""`)
+* 开头或结尾是空格字符
+* 值等于 `true`、`false` 或 `null`（区分大小写）
+* 看起来像数字（例如 `"42"`、`"-3.14"`、`"1e-6"`、`"05"`）
+* 包含特殊字符：`:`、`"`、`\`、`[`、`]`、`{`、`}`，或任何控制字符（U+0000–U+001F，包括换行符/制表符/回车符）
+* 包含相关的分隔符（数组作用范围内为生效分隔符，其他情况下为文档级分隔符）
+* 值等于 `"-"`，或以 `"-"` 开头且后面还有其他字符
+
+除上述情况，字符串都可以不加引号。Unicode、emoji 以及内部（非开头/结尾）带空格的字符串都可以安全地不加引号：
+
+```yaml
+message: Hello 世界 👋
+note: This has inner spaces
+```
+
+### 转义序列
+
+带引号的字符串中允许使用六种转义字符：
+
+| 字符 | 转义 |
+|-----------|--------|
+| 反斜杠(`\`) | `\\` |
+| 双引号(`"`) | `\"` |
+| 换行符(U+000A) | `\n` |
+| 回车符(U+000D) | `\r` |
+| 制表符(U+0009) | `\t` |
+| 其他任意 U+0000–U+001F 控制字符 | `\uXXXX` |
+
+其他转义方式（例如 `\x`、`\0`、`\b`）一律会被拒绝，未配对的 UTF-16 代理码位 `\uXXXX`（U+D800–U+DFFF）同样会被拒绝。
+
+### 类型转换
+
+§2 特例范围内的数值以规范的十进制形式输出；超出该范围时可使用指数记法。非 JSON 类型（`NaN`、`Infinity`、`BigInt`、`Date`、`Set`、`Map`、`undefined` 等）在编码前会被规范化——完整的映射关系请参阅 [API 参考——类型规范化](/zh/reference/api#类型规范化)。
+
+解码器在输入时同时接受十进制和指数形式（例如 `42`、`-3.14`、`1e-6`），并将带有非法前导零的 token（例如 `"05"`）视为字符串而非数字。
+
+### 使用 toJSON 进行自定义序列化
+
+拥有 `toJSON()` 方法的对象在序列化时会先调用该方法，再对其结果进行归一化后编码，这与 `JSON.stringify` 的行为类似：
 
 ```ts
-import { encode } from '@toon-format/toon'
+const obj = {
+  data: 'example',
+  toJSON() {
+    return { info: this.data }
+  }
+}
 
-const data = { data: { metadata: { items: ['a', 'b'] } } }
-
-// Without folding
-encode(data)
-// data:
-//   metadata:
-//     items[2]: a,b
-
-// With folding
-encode(data, { keyFolding: 'safe' })
-// data.metadata.items[2]: a,b
+encode(obj)
+// info: example
 ```
 
-**Path Expansion** (`expandPaths: 'safe'`) reverses this during decoding:
+`toJSON()` 方法：
+
+* 优先于内置的归一化处理(Date、Array、Set、Map)
+* 其结果会被递归地归一化
+* 只要对象的原型链中存在 `toJSON`，就会被调用
+
+***
+
+关于引号、转义、类型转换以及严格模式解码的完整规则，请参阅 [规范 §2–4(数据模型)、§7(字符串与键)以及 §14(严格模式)](https://github.com/toon-format/spec/blob/main/SPEC.md)。
+
+---
+
+---
+url: /zh/guide/llm-prompts.md
+description: 向大语言模型发送 TOON 以及校验其生成的 TOON 的提示策略，附带示例。
+---
+
+# 在大语言模型中使用 TOON
+
+TOON 专为向大语言模型传递结构化数据而设计，能降低 token 成本并提升可靠性。本指南展示如何在提示词中有效使用 TOON，既包括输入（向模型发送数据），也包括输出（让模型生成 TOON）。
+
+本指南关注 TOON 格式本身。代码示例使用 TypeScript 库进行演示，但无论你使用哪种编程语言，同样的模式和技巧都适用。
+
+## 为什么要在大语言模型场景中使用 TOON
+
+大语言模型 token 会产生成本，而 JSON 较为冗长——数组中的每条记录都要重复字段名。TOON 只声明一次字段，然后数据逐行流式呈现，因此在结构一致的数组上尤其能减少 token；与格式化后的 JSON 相比，通常可节省 30%–60%。
+
+TOON 提供了结构护栏：显式的 `[N]` 长度和 `{fields}` 首部，让模型更容易跟踪行数据，也便于你校验输出。严格模式有助于在解码模型响应时检测截断或格式错误的 TOON。
+
+## 将 TOON 作为输入发送
+
+使用 TOON 时，与其描述格式，不如直接展示格式。TOON 的结构本身就能说明格式规则——模型看到这种模式后，通常可以自然地理解并解析它。
+
+将编码后的数据放在代码块中（为清晰起见，标记为 ` ```toon`）：
+
+````md
+数据采用 TOON 格式（2 空格缩进，数组会显示长度和字段）。
+
+```toon
+users[3]{id,name,role,lastLogin}:
+  1,Alice,admin,"2025-01-15T10:30:00Z"
+  2,Bob,user,"2025-01-14T15:22:00Z"
+  3,Charlie,user,"2025-01-13T09:45:00Z"
+```
+
+任务：总结各用户的角色及其最近的活跃情况。
+````
+
+通常有缩进和首部就足够了——模型会像处理熟悉的 YAML 或 CSV 一样处理 TOON。显式的数组长度(`[N]`)和字段头(`{fields}`)有助于模型跟踪结构，对于大型表格尤为有用。
+
+> \[!NOTE]
+> 大多数模型内置的语法高亮并不支持 TOON，因此使用 ` ```toon` 或 ` ```yaml` 都可以。真正重要的是结构本身。
+
+## 让大语言模型生成 TOON
+
+对于输出，当你希望模型**生成** TOON 时：
+
+* **展示期望的首部**（例如 `users[N]{id,name,role}:`）。模型只需填充行数据，而不必重复键名，从而减少生成错误。
+* **说明规则**：2 空格缩进、无尾随空格、`[N]` 需与行数保持一致。
+
+下面这个提示词同时适用于读取和生成场景：
+
+````md
+数据采用 TOON 格式（2 空格缩进，数组会显示长度和字段）。
+
+```toon
+users[3]{id,name,role,lastLogin}:
+  1,Alice,admin,"2025-01-15T10:30:00Z"
+  2,Bob,user,"2025-01-14T15:22:00Z"
+  3,Charlie,user,"2025-01-13T09:45:00Z"
+```
+
+任务：仅以 TOON 格式返回角色为 "user" 的用户。使用相同的首部格式。将 [N] 设为与行数一致。只输出代码块。
+````
+
+**期望的输出：**
+
+```toon
+users[2]{id,name,role,lastLogin}:
+  2,Bob,user,"2025-01-14T15:22:00Z"
+  3,Charlie,user,"2025-01-13T09:45:00Z"
+```
+
+模型将 `[N]` 调整为 `2`，并生成了两行数据。
+
+### 使用严格模式校验
+
+在解码模型生成的 TOON 时，使用严格模式（默认）来捕获错误：
 
 ```ts
 import { decode } from '@toon-format/toon'
 
-const toon = 'data.metadata.items[2]: a,b'
-
-const data = decode(toon, { expandPaths: 'safe' })
-console.log(data)
-// { data: { metadata: { items: ['a', 'b'] } } }
+try {
+  const data = decode(modelOutput, { strict: true })
+  // 成功——数据有效
+}
+catch (error) {
+  // 模型输出格式有误(数组长度不匹配、非法转义等)
+  console.error('校验失败:', error.message)
+}
 ```
 
-**Expansion Conflict Resolution:**
+严格模式会检查数组长度、缩进和转义，帮助你发现内容截断或 TOON 格式错误。完整细节请参阅 [API 参考](/zh/reference/api#decode-input-options)。
 
-When multiple expanded keys construct overlapping paths, the decoder merges them recursively:
+## 选择有利于 token 效率的分隔符
 
-* **Object + Object**: Deep merge recursively
-* **Object + Non-object** (array or primitive): Conflict
-  * With `strict: true` (default): Error
-  * With `strict: false`: Last-write-wins (LWW)
+如果想进一步减少 token 用量，可以对以制表符分隔的表格使用 `delimiter: '\t'`。制表符是单个字符，通常比逗号更容易被高效地 token 化，也很少出现在自然文本中（因此可以减少引号转义）。
 
-Duplicate sibling keys (independent of `expandPaths`) follow the same policy: strict mode throws, lenient mode keeps the last value seen.
+```ts
+const toon = encode(data, { delimiter: '\t' })
+```
 
-### Delimiter Strategies
+在使用制表符时，请告诉模型“字段以制表符分隔”。关于分隔符的更多内容，请参阅 [格式概览](/zh/guide/format-overview#分隔符选项)。
 
-Tab delimiters (`\t`) often tokenize more efficiently than commas. Tabs are single characters that rarely appear in natural text, which reduces the need for quote-escaping and leads to smaller token counts in large datasets.
+## 流式处理大型输出
 
-Example:
+在处理大型数据集（数千条记录或深度嵌套结构）时，使用 `encodeLines()` 逐行流式输出 TOON，而不是在内存中构建完整字符串。
 
-```yaml
-items[2	]{sku	name	qty	price}:
+```ts
+import { encodeLines } from '@toon-format/toon'
+
+const largeData = await fetchThousandsOfRecords()
+
+// 流式处理大型数据集，而不必将完整字符串加载到内存中
+for (const line of encodeLines(largeData, { delimiter: '\t' })) {
+  process.stdout.write(`${line}\n`)
+}
+```
+
+CLI 同样支持流式处理，以实现内存高效的 JSON 到 TOON 的格式转换：
+
+```bash
+toon large-dataset.json -o output.toon
+```
+
+这种流式处理方式可以在为大语言模型准备大型上下文窗口时避免内存溢出。关于 `encodeLines()` 的完整细节，请参阅 [API 参考](/zh/reference/api#encodelines-input-options)。
+
+**流式消费大语言模型输出：** 如果你的大语言模型客户端提供流式文本，并且你按行缓冲内容，就可以增量解码 TOON：
+
+```ts
+import { decodeFromLines } from '@toon-format/toon'
+
+// 逐行缓冲响应的数据
+const lines: string[] = []
+let buffer = ''
+
+for await (const chunk of modelStream) {
+  buffer += chunk
+  let index: number
+
+  while ((index = buffer.indexOf('\n')) !== -1) {
+    lines.push(buffer.slice(0, index))
+    buffer = buffer.slice(index + 1)
+  }
+}
+
+// 解码已缓冲的行
+const data = decodeFromLines(lines)
+```
+
+关于流式解码 API，请参阅 [`decodeFromLines()`](/zh/reference/api#decodefromlines-lines-options) 和 [`decodeStream()`](/zh/reference/api#decodestream-source-options)。
+
+## 技巧与注意事项
+
+**展示而非描述。** 不要详细解释 TOON 语法——只需展示一个示例即可。模型会从上下文中学习这种模式。一个包含 2-5 行的简单代码块，比大段的文字说明更有效。
+
+**保持示例精简。** 示例使用 2-5 行即可，不必给出几百行。模型会根据模式进行泛化。过大的示例只会浪费 token，而不会提升准确率。
+
+**始终校验输出。** 使用 `strict: true`（默认值）解码生成的 TOON，以便尽早捕获错误。不要在未经检查的情况下，假定模型输出的就是有效的 TOON。
+
+## 真实案例
+
+下面是一个完整的工作流程：向模型发送数据，并校验模型返回的 TOON。
+
+**带有 TOON 输入的提示词：**
+
+````md
+系统日志采用 TOON 格式（制表符分隔）：
+
+```toon
+events[4	]{id	level	message	timestamp}:
+  1	error	Connection timeout	"2025-01-15T10:00:00Z"
+  2	warn	Slow query	"2025-01-15T10:05:00Z"
+  3	info	User login	"2025-01-15T10:10:00Z"
+  4	error	Database error	"2025-01-15T10:15:00Z"
+```
+
+任务：仅以 TOON 格式返回 error 级别的事件。使用相同格式。
+````
+
+**校验响应：**
+
+```ts
+import { decode } from '@toon-format/toon'
+
+const modelResponse = `
+events[2	]{id	level	message	timestamp}:
+  1	error	Connection timeout	"2025-01-15T10:00:00Z"
+  4	error	Database error	"2025-01-15T10:15:00Z"
+`
+
+const filtered = decode(modelResponse, { strict: true })
+// ✓ 校验通过——模型正确地进行了筛选,并将 [N] 调整为 2
+```
+
+---
+
+---
+url: /zh/guide/benchmarks.md
+description: TOON 在混合结构与纯扁平结构两个赛道上的检索准确率和 Token 使用效率结果。
+---
+
+# 基准测试
+
+本页的基准测试从两个关键维度衡量 TOON 的表现：
+
+* **检索准确率**：大语言模型理解不同输入格式并从中提取信息的能力。
+* **Token 使用效率**：每种格式表示相同数据所需的 token 数量。
+
+为了保证公平比较，基准测试被划分为两个赛道：
+
+* **混合结构赛道**：具有嵌套或部分一致结构的数据集（TOON 对比 JSON、YAML、XML）。CSV 被排除在外，因为它无法正确表示这些结构。
+* **纯扁平结构赛道**：具有扁平表格结构、适合使用 CSV 的数据集（CSV 对比 TOON、JSON、YAML、XML）。
+
+## 检索准确率
+
+基准测试包含 209 个数据检索问题，用于评估大语言模型对不同输入格式的理解能力；测试选用了 4 个大语言模型。
+
+#### 数据集目录
+
+| 数据集 | 行数 | 结构 | CSV 支持 | 表格化适用率 |
+| ------- | ---- | --------- | ----------- | ----------- |
+| 字段一致的员工记录 | 100 | 字段一致 | ✓ | 100% |
+| 带嵌套结构的电商订单 | 50 | 嵌套 | ✗ | 33% |
+| 时间序列分析数据 | 60 | 字段一致 | ✓ | 100% |
+| GitHub 前 100 仓库 | 100 | 字段一致 | ✓ | 100% |
+| 部分一致的事件日志 | 75 | 部分一致 | ✗ | 50% |
+| 深度嵌套配置 | 11 | 深度嵌套 | ✗ | 0% |
+| 有效的完整数据集（对照组） | 20 | 字段一致 | ✓ | 100% |
+| 数组被截断：末尾移除 3 行 | 17 | 字段一致 | ✓ | 100% |
+| 超出声明长度的多余行 | 23 | 字段一致 | ✓ | 100% |
+| 字段数量不一致（第 10 行缺少 `salary` 字段） | 20 | 字段一致 | ✓ | 100% |
+| 缺少必需字段（多行缺少 `email` 字段） | 20 | 字段一致 | ✓ | 100% |
+
+**结构类别：**
+
+* **字段一致**：所有对象都具有完全相同的字段，且字段值均为基本类型
+* **部分一致**：部分对象共享相同字段结构，其他对象包含不同字段或嵌套结构
+* **嵌套**：包含嵌套结构（嵌套对象或数组）的对象
+* **深度嵌套**：高度嵌套，表格化适用率极低
+
+**CSV 支持：** ✓（支持），✗（不支持——需要有损的扁平化处理）
+
+**表格化适用率：** 符合 TOON 表格化格式条件（由基本类型值构成的字段一致对象）的数组所占百分比
+
+#### 检索效率排名（每 1K token 的准确率）
+
+按检索效率（每 1,000 个 token 对应的准确率百分比）对各格式进行排名：
+
+```
+TOON           ████████████████████   27.7 acc%/1K tok  │  76.4% acc  │  2,759 tokens
+JSON compact   █████████████████░░░   23.7 acc%/1K tok  │  73.7% acc  │  3,104 tokens
+YAML           ██████████████░░░░░░   19.9 acc%/1K tok  │  74.5% acc  │  3,749 tokens
+JSON           ████████████░░░░░░░░   16.4 acc%/1K tok  │  75.0% acc  │  4,587 tokens
+XML            ██████████░░░░░░░░░░   13.8 acc%/1K tok  │  72.1% acc  │  5,221 tokens
+```
+
+*检索效率分数 = （准确率 % ÷ Token 数） × 1,000。数值越高越好。*
+
+> \[!TIP]
+> TOON 达到了 **76.4%** 的准确率（JSON 为 75.0%），同时所用 token 减少了 **39.9%**。
+
+**关于 CSV 的说明：** 由于它仅支持 209 个问题中的 109 个（仅限扁平表格数据），因此未列入排名。虽然 CSV 对于简单表格数据而言 Token 使用效率极高，但它无法表示其他格式所能处理的嵌套结构。
+
+#### 各模型准确率
+
+4 个大语言模型在 209 个数据检索问题上的准确率：
+
+```
+claude-haiku-4-5-20251001
+→ TOON           ████████████░░░░░░░░    59.8% (125/209)
+  JSON           ███████████░░░░░░░░░    57.4% (120/209)
+  YAML           ███████████░░░░░░░░░    56.0% (117/209)
+  XML            ███████████░░░░░░░░░    55.5% (116/209)
+  JSON compact   ███████████░░░░░░░░░    55.0% (115/209)
+  CSV            ██████████░░░░░░░░░░    50.5% (55/109)
+
+gemini-3-flash-preview
+  XML            ████████████████████    98.1% (205/209)
+  JSON           ███████████████████░    97.1% (203/209)
+  YAML           ███████████████████░    97.1% (203/209)
+→ TOON           ███████████████████░    96.7% (202/209)
+  JSON compact   ███████████████████░    96.7% (202/209)
+  CSV            ███████████████████░    96.3% (105/109)
+
+gpt-5-nano
+→ TOON           ██████████████████░░    90.9% (190/209)
+  JSON compact   ██████████████████░░    90.9% (190/209)
+  JSON           ██████████████████░░    89.0% (186/209)
+  CSV            ██████████████████░░    89.0% (97/109)
+  YAML           █████████████████░░░    87.1% (182/209)
+  XML            ████████████████░░░░    80.9% (169/209)
+
+grok-4-1-fast-non-reasoning
+→ TOON           ████████████░░░░░░░░    58.4% (122/209)
+  YAML           ████████████░░░░░░░░    57.9% (121/209)
+  JSON           ███████████░░░░░░░░░    56.5% (118/209)
+  XML            ███████████░░░░░░░░░    54.1% (113/209)
+  JSON compact   ██████████░░░░░░░░░░    52.2% (109/209)
+  CSV            ██████████░░░░░░░░░░    51.4% (56/109)
+```
+
+> \[!TIP]
+> 在这些数据集上，TOON 达到了 **76.4% 的准确率**（JSON 为 75.0%），同时所用 token 减少了 **39.9%**。
+
+#### 按问题类型划分的表现
+
+| 问题类型 | TOON | JSON | YAML | JSON compact | XML | CSV |
+| ------------- | ---- | ---- | ---- | ---- | ---- | ---- |
+| 字段检索 | 99.6% | 99.3% | 98.5% | 98.5% | 98.9% | 100.0% |
+| 聚合运算 | 61.9% | 61.9% | 59.9% | 58.3% | 54.4% | 50.9% |
+| 筛选过滤 | 56.8% | 53.1% | 56.3% | 55.2% | 51.6% | 50.9% |
+| 结构感知 | 89.0% | 87.0% | 84.0% | 84.0% | 81.0% | 85.9% |
+| 结构校验 | 70.0% | 60.0% | 60.0% | 55.0% | 85.0% | 80.0% |
+
+#### 按数据集划分的表现
+
+##### 字段一致的员工记录
+
+| 格式 | 准确率 | Token 数 | 正确数/总数 |
+| ------ | -------- | ------ | ------------- |
+| `csv` | 73.2% | 2,334 | 120/164 |
+| `toon` | 73.2% | 2,498 | 120/164 |
+| `json-compact` | 73.8% | 3,924 | 121/164 |
+| `yaml` | 73.8% | 4,959 | 121/164 |
+| `json-pretty` | 73.8% | 6,331 | 121/164 |
+| `xml` | 74.4% | 7,296 | 122/164 |
+
+##### 带嵌套结构的电商订单
+
+| 格式 | 准确率 | Token 数 | 正确数/总数 |
+| ------ | -------- | ------ | ------------- |
+| `toon` | 82.3% | 7,458 | 135/164 |
+| `json-compact` | 78.7% | 7,110 | 129/164 |
+| `yaml` | 79.9% | 8,755 | 131/164 |
+| `json-pretty` | 79.3% | 11,234 | 130/164 |
+| `xml` | 77.4% | 12,649 | 127/164 |
+
+##### 时间序列分析数据
+
+| 格式 | 准确率 | Token 数 | 正确数/总数 |
+| ------ | -------- | ------ | ------------- |
+| `csv` | 75.0% | 1,411 | 90/120 |
+| `toon` | 78.3% | 1,553 | 94/120 |
+| `json-compact` | 74.2% | 2,354 | 89/120 |
+| `yaml` | 75.8% | 2,954 | 91/120 |
+| `json-pretty` | 75.0% | 3,681 | 90/120 |
+| `xml` | 72.5% | 4,389 | 87/120 |
+
+##### GitHub 前 100 仓库
+
+| 格式 | 准确率 | Token 数 | 正确数/总数 |
+| ------ | -------- | ------ | ------------- |
+| `csv` | 65.9% | 8,527 | 87/132 |
+| `toon` | 66.7% | 8,779 | 88/132 |
+| `yaml` | 65.2% | 13,141 | 86/132 |
+| `json-compact` | 59.8% | 11,464 | 79/132 |
+| `json-pretty` | 63.6% | 15,157 | 84/132 |
+| `xml` | 56.1% | 17,105 | 74/132 |
+
+##### 部分一致的事件日志
+
+| 格式 | 准确率 | Token 数 | 正确数/总数 |
+| ------ | -------- | ------ | ------------- |
+| `json-compact` | 68.3% | 4,839 | 82/120 |
+| `toon` | 65.0% | 5,819 | 78/120 |
+| `json-pretty` | 69.2% | 6,817 | 83/120 |
+| `yaml` | 61.7% | 5,847 | 74/120 |
+| `xml` | 58.3% | 7,729 | 70/120 |
+
+##### 深度嵌套配置
+
+| 格式 | 准确率 | Token 数 | 正确数/总数 |
+| ------ | -------- | ------ | ------------- |
+| `json-compact` | 90.5% | 568 | 105/116 |
+| `toon` | 94.8% | 655 | 110/116 |
+| `yaml` | 93.1% | 675 | 108/116 |
+| `json-pretty` | 92.2% | 924 | 107/116 |
+| `xml` | 91.4% | 1,013 | 106/116 |
+
+##### 有效的完整数据集（对照组）
+
+| 格式 | 准确率 | Token 数 | 正确数/总数 |
+| ------ | -------- | ------ | ------------- |
+| `toon` | 100.0% | 535 | 4/4 |
+| `json-compact` | 100.0% | 787 | 4/4 |
+| `yaml` | 100.0% | 992 | 4/4 |
+| `json-pretty` | 100.0% | 1,274 | 4/4 |
+| `xml` | 25.0% | 1,462 | 1/4 |
+| `csv` | 0.0% | 483 | 0/4 |
+
+##### 数组被截断：末尾移除 3 行
+
+| 格式 | 准确率 | Token 数 | 正确数/总数 |
+| ------ | -------- | ------ | ------------- |
+| `csv` | 100.0% | 413 | 4/4 |
+| `xml` | 100.0% | 1,243 | 4/4 |
+| `toon` | 0.0% | 462 | 0/4 |
+| `json-pretty` | 0.0% | 1,085 | 0/4 |
+| `yaml` | 0.0% | 843 | 0/4 |
+| `json-compact` | 0.0% | 670 | 0/4 |
+
+##### 超出声明长度的多余行
+
+| 格式 | 准确率 | Token 数 | 正确数/总数 |
+| ------ | -------- | ------ | ------------- |
+| `csv` | 100.0% | 550 | 4/4 |
+| `toon` | 75.0% | 605 | 3/4 |
+| `json-compact` | 75.0% | 901 | 3/4 |
+| `xml` | 100.0% | 1,678 | 4/4 |
+| `yaml` | 75.0% | 1,138 | 3/4 |
+| `json-pretty` | 50.0% | 1,460 | 2/4 |
+
+##### 字段数量不一致（第 10 行缺少 `salary` 字段）
+
+| 格式 | 准确率 | Token 数 | 正确数/总数 |
+| ------ | -------- | ------ | ------------- |
+| `csv` | 100.0% | 480 | 4/4 |
+| `json-compact` | 100.0% | 782 | 4/4 |
+| `yaml` | 100.0% | 985 | 4/4 |
+| `toon` | 100.0% | 1,008 | 4/4 |
+| `json-pretty` | 100.0% | 1,266 | 4/4 |
+| `xml` | 100.0% | 1,453 | 4/4 |
+
+##### 缺少必需字段（多行缺少 `email` 字段）
+
+| 格式 | 准确率 | Token 数 | 正确数/总数 |
+| ------ | -------- | ------ | ------------- |
+| `csv` | 100.0% | 340 | 4/4 |
+| `xml` | 100.0% | 1,409 | 4/4 |
+| `toon` | 75.0% | 974 | 3/4 |
+| `json-pretty` | 50.0% | 1,225 | 2/4 |
+| `yaml` | 25.0% | 951 | 1/4 |
+| `json-compact` | 0.0% | 750 | 0/4 |
+
+#### 按模型划分的表现
+
+##### claude-haiku-4-5-20251001
+
+| 格式 | 准确率 | 正确数/总数 |
+| ------ | -------- | ------------- |
+| `toon` | 59.8% | 125/209 |
+| `json-pretty` | 57.4% | 120/209 |
+| `yaml` | 56.0% | 117/209 |
+| `xml` | 55.5% | 116/209 |
+| `json-compact` | 55.0% | 115/209 |
+| `csv` | 50.5% | 55/109 |
+
+##### gemini-3-flash-preview
+
+| 格式 | 准确率 | 正确数/总数 |
+| ------ | -------- | ------------- |
+| `xml` | 98.1% | 205/209 |
+| `json-pretty` | 97.1% | 203/209 |
+| `yaml` | 97.1% | 203/209 |
+| `toon` | 96.7% | 202/209 |
+| `json-compact` | 96.7% | 202/209 |
+| `csv` | 96.3% | 105/109 |
+
+##### gpt-5-nano
+
+| 格式 | 准确率 | 正确数/总数 |
+| ------ | -------- | ------------- |
+| `toon` | 90.9% | 190/209 |
+| `json-compact` | 90.9% | 190/209 |
+| `json-pretty` | 89.0% | 186/209 |
+| `csv` | 89.0% | 97/109 |
+| `yaml` | 87.1% | 182/209 |
+| `xml` | 80.9% | 169/209 |
+
+##### grok-4-1-fast-non-reasoning
+
+| 格式 | 准确率 | 正确数/总数 |
+| ------ | -------- | ------------- |
+| `toon` | 58.4% | 122/209 |
+| `yaml` | 57.9% | 121/209 |
+| `json-pretty` | 56.5% | 118/209 |
+| `xml` | 54.1% | 113/209 |
+| `json-compact` | 52.2% | 109/209 |
+| `csv` | 51.4% | 56/109 |
+
+#### 测试内容说明
+
+本基准测试衡量的是**大语言模型对不同输入格式的理解能力和数据检索准确率**。每个模型都会接收格式化数据，并需要根据这些数据回答问题。它**不是**在测试模型生成 TOON 输出的能力，而是测试模型读取和理解 TOON 的能力。
+
+#### 测试的数据集
+
+十一个数据集分别用于测试不同的结构模式和校验能力：
+
+**主要数据集：**
+
+1. **表格型**（100 条员工记录）：字段完全一致的对象，最适合 TOON 的表格化格式。
+2. **嵌套型**（50 个电商订单）：包含嵌套客户对象和商品数组的复杂结构。
+3. **分析型**（60 天的指标数据）：带有日期和数值的时间序列数据。
+4. **GitHub**（100 个仓库）：按星标数排名的 GitHub 热门仓库真实数据。
+5. **事件日志**（75 条日志）：部分一致数据，约 50% 为扁平日志，约 50% 带有嵌套的错误对象。
+6. **嵌套配置**（1 份配置）：深度嵌套配置，表格化适用率极低。
+
+**结构校验数据集：**
+
+7. **对照组**：有效的完整数据集（作为校验基线）
+8. **截断**：末尾移除 3 行的数组（测试 `[N]` 长度检测能力）
+9. **多余行**：超出声明长度、多出 3 行的数组
+10. **宽度不匹配**：字段数量不一致（第 10 行缺少 `salary` 字段）
+11. **缺失字段**：系统性的字段缺失（多行缺少 `email` 字段）
+
+#### 问题类型
+
+209 个问题分为五大类动态生成：
+
+* **字段检索（33%）**：可直接查到的值，或可以直接从记录中读取的值（包括布尔值和简单计数，如数组长度）
+  * 示例：“Alice 的薪资是多少？” → `75000`
+  * 示例：“订单 ORD-0042 中有多少件商品？” → `3`
+  * 示例：“订单 ORD-0042 的客户姓名是什么？” → `John Doe`
+
+* **聚合运算（30%）**：数据集层面的总数和平均值，以及单条件筛选（总数、求和、最小/最大值比较）
+  * 示例：“有多少员工在工程部门工作？” → `17`
+  * 示例：“所有订单的总收入是多少？” → `45123.50`
+  * 示例：“有多少员工的薪资 > 80000？” → `23`
+
+* **筛选过滤（23%）**：需要复合逻辑的多条件查询（跨字段的 AND 约束）
+  * 示例：“销售部门中有多少员工的薪资 > 80000？” → `5`
+  * 示例：“有多少在职员工的工作年限超过 10 年？” → `8`
+
+* **结构感知（12%）**：测试模型能否利用输入格式自带的结构信息（如 TOON 的 `[N]` 计数和 `{fields}`，以及 CSV 的表头行）
+  * 示例：“数据集中有多少员工？” → `100`
+  * 示例：“列出员工记录的字段名” → `id, name, email, department, salary, yearsExperience, active`
+  * 示例：“最后一名员工所在部门是什么？” → `Sales`
+
+* **结构校验（2%）**：测试模型能否利用结构元数据识别不完整、被截断或损坏的数据
+  * 示例：“这份数据是否完整有效？” → `YES`（对照数据集）或 `NO`（损坏数据集）
+  * 测试 TOON 的 `[N]` 长度校验和 `{fields}` 一致性检查
+  * 展示 CSV 缺乏结构校验能力的情况
+
+#### 评测流程
+
+1. **格式转换**：每个数据集都会被转换为全部 6 种格式（TOON、JSON、YAML、JSON compact、XML、CSV）。
+2. **向模型提问**：每个模型在提示词中接收格式化数据和问题，并提取答案。
+3. **确定性校验**：使用类型感知的比较方式对答案进行校验（例如 `50000` = `$50,000`、`Engineering` = `engineering`、`2025-01-01` = `January 1, 2025`），无需借助大语言模型裁判。
+
+#### 模型与配置
+
+* **测试模型**：`claude-haiku-4-5-20251001`、`gemini-3-flash-preview`、`gpt-5-nano`、`grok-4-1-fast-non-reasoning`
+* **Token 计数**：使用 `gpt-tokenizer` 和 `o200k_base` 编码（GPT-5 分词器）
+* **温度参数**：未设置（使用模型默认值）
+* **评测总数**：209 个问题 × 6 种格式 × 4 个模型 = 5,016 次大语言模型调用
+
+## Token 使用效率
+
+Token 数量使用 GPT-5 的 `o200k_base` 分词器，并通过 [`gpt-tokenizer`](https://github.com/niieani/gpt-tokenizer) 测量。节省比例以格式化 JSON（2 空格缩进）为主要基线计算，并额外对比 JSON compact、YAML 和 XML。实际节省效果因模型和分词器而异。
+
+基准测试涵盖了不同结构模式（字段一致、部分一致、嵌套、深度嵌套）的数据集，以展示 TOON 的优势场景以及其他格式可能更适用的场景。
+
+#### 混合结构赛道
+
+具有嵌套或部分一致结构的数据集。CSV 被排除在外，因为它无法正确表示这些结构。
+
+```
+🛒 带嵌套结构的电商订单  ┊  表格化适用率:33%
+   │
+   TOON                █████████████░░░░░░░    73,126 tokens
+   ├─ vs JSON          (−33.3%)               109,599 tokens
+   ├─ vs JSON compact  (+5.3%)                 69,459 tokens
+   ├─ vs YAML          (−14.4%)                85,415 tokens
+   └─ vs XML           (−40.7%)               123,344 tokens
+
+🧾 部分一致的事件日志  ┊  表格化适用率:50%
+   │
+   TOON                █████████████████░░░   154,084 tokens
+   ├─ vs JSON          (−15.0%)               181,201 tokens
+   ├─ vs JSON compact  (+19.9%)               128,529 tokens
+   ├─ vs YAML          (−0.8%)                155,397 tokens
+   └─ vs XML           (−25.2%)               205,859 tokens
+
+🧩 深度嵌套配置  ┊  表格化适用率:0%
+   │
+   TOON                ██████████████░░░░░░       620 tokens
+   ├─ vs JSON          (−31.9%)                   911 tokens
+   ├─ vs JSON compact  (+11.1%)                   558 tokens
+   ├─ vs YAML          (−6.3%)                    662 tokens
+   └─ vs XML           (−38.2%)                 1,003 tokens
+
+──────────────────────────────────── 总计 ────────────────────────────────────
+   TOON                ████████████████░░░░   227,830 tokens
+   ├─ vs JSON          (−21.9%)               291,711 tokens
+   ├─ vs JSON compact  (+14.7%)               198,546 tokens
+   ├─ vs YAML          (−5.7%)                241,474 tokens
+   └─ vs XML           (−31.0%)               330,206 tokens
+```
+
+#### 纯扁平结构赛道
+
+具有扁平表格结构、适合使用 CSV 的数据集。
+
+```
+👥 字段一致的员工记录  ┊  表格化适用率:100%
+   │
+   CSV                 ███████████████████░    47,102 tokens
+   TOON                ████████████████████    49,919 tokens   (+6.0% vs CSV)
+   ├─ vs JSON          (−60.7%)               127,063 tokens
+   ├─ vs JSON compact  (−36.9%)                79,059 tokens
+   ├─ vs YAML          (−50.1%)                100,011 tokens
+   └─ vs XML           (−65.9%)               146,579 tokens
+
+📈 时间序列分析数据  ┊  表格化适用率:100%
+   │
+   CSV                 ██████████████████░░     8,383 tokens
+   TOON                ████████████████████     9,115 tokens   (+8.7% vs CSV)
+   ├─ vs JSON          (−59.0%)                22,245 tokens
+   ├─ vs JSON compact  (−35.9%)                14,211 tokens
+   ├─ vs YAML          (−49.0%)                17,858 tokens
+   └─ vs XML           (−65.8%)                26,616 tokens
+
+⭐ GitHub 前 100 仓库  ┊  表格化适用率:100%
+   │
+   CSV                 ███████████████████░     8,512 tokens
+   TOON                ████████████████████     8,744 tokens   (+2.7% vs CSV)
+   ├─ vs JSON          (−42.3%)                15,144 tokens
+   ├─ vs JSON compact  (−23.7%)                11,454 tokens
+   ├─ vs YAML          (−33.4%)                13,128 tokens
+   └─ vs XML           (−48.9%)                17,095 tokens
+
+──────────────────────────────────── 总计 ────────────────────────────────────
+   CSV                 ███████████████████░    63,997 tokens
+   TOON                ████████████████████    67,778 tokens   (+5.9% vs CSV)
+   ├─ vs JSON          (−58.8%)               164,452 tokens
+   ├─ vs JSON compact  (−35.3%)                104,724 tokens
+   ├─ vs YAML          (−48.3%)                130,997 tokens
+   └─ vs XML           (−64.4%)                190,290 tokens
+```
+
+#### 📈 时间序列分析数据
+
+**节省：** 13,130 个 token（相较 JSON 减少 59.0%）
+
+**JSON**（22,245 个 token）：
+
+```json
+{
+  "metrics": [
+    {
+      "date": "2025-01-01",
+      "views": 6138,
+      "clicks": 174,
+      "conversions": 12,
+      "revenue": 2712.49,
+      "bounceRate": 0.35
+    },
+    {
+      "date": "2025-01-02",
+      "views": 4616,
+      "clicks": 274,
+      "conversions": 34,
+      "revenue": 9156.29,
+      "bounceRate": 0.56
+    },
+    {
+      "date": "2025-01-03",
+      "views": 4460,
+      "clicks": 143,
+      "conversions": 8,
+      "revenue": 1317.98,
+      "bounceRate": 0.59
+    },
+    {
+      "date": "2025-01-04",
+      "views": 4740,
+      "clicks": 125,
+      "conversions": 13,
+      "revenue": 2934.77,
+      "bounceRate": 0.37
+    },
+    {
+      "date": "2025-01-05",
+      "views": 6428,
+      "clicks": 369,
+      "conversions": 19,
+      "revenue": 1317.24,
+      "bounceRate": 0.3
+    }
+  ]
+}
+```
+
+**TOON**（9,115 个 token）：
+
+```
+metrics[5]{date,views,clicks,conversions,revenue,bounceRate}:
+  2025-01-01,6138,174,12,2712.49,0.35
+  2025-01-02,4616,274,34,9156.29,0.56
+  2025-01-03,4460,143,8,1317.98,0.59
+  2025-01-04,4740,125,13,2934.77,0.37
+  2025-01-05,6428,369,19,1317.24,0.3
+```
+
+***
+
+#### ⭐ GitHub 前 100 仓库
+
+**节省：** 6,400 个 token（相较 JSON 减少 42.3%）
+
+**JSON**（15,144 个 token）：
+
+```json
+{
+  "repositories": [
+    {
+      "id": 28457823,
+      "name": "freeCodeCamp",
+      "repo": "freeCodeCamp/freeCodeCamp",
+      "description": "freeCodeCamp.org's open-source codebase and curriculum. Learn math, programming,…",
+      "createdAt": "2014-12-24T17:49:19Z",
+      "updatedAt": "2025-10-28T11:58:08Z",
+      "pushedAt": "2025-10-28T10:17:16Z",
+      "stars": 430886,
+      "watchers": 8583,
+      "forks": 42146,
+      "defaultBranch": "main"
+    },
+    {
+      "id": 132750724,
+      "name": "build-your-own-x",
+      "repo": "codecrafters-io/build-your-own-x",
+      "description": "Master programming by recreating your favorite technologies from scratch.",
+      "createdAt": "2018-05-09T12:03:18Z",
+      "updatedAt": "2025-10-28T12:37:11Z",
+      "pushedAt": "2025-10-10T18:45:01Z",
+      "stars": 430877,
+      "watchers": 6332,
+      "forks": 40453,
+      "defaultBranch": "master"
+    },
+    {
+      "id": 21737465,
+      "name": "awesome",
+      "repo": "sindresorhus/awesome",
+      "description": "😎 Awesome lists about all kinds of interesting topics",
+      "createdAt": "2014-07-11T13:42:37Z",
+      "updatedAt": "2025-10-28T12:40:21Z",
+      "pushedAt": "2025-10-27T17:57:31Z",
+      "stars": 410052,
+      "watchers": 8017,
+      "forks": 32029,
+      "defaultBranch": "main"
+    }
+  ]
+}
+```
+
+**TOON**（8,744 个 token）：
+
+```
+repositories[3]{id,name,repo,description,createdAt,updatedAt,pushedAt,stars,watchers,forks,defaultBranch}:
+  28457823,freeCodeCamp,freeCodeCamp/freeCodeCamp,"freeCodeCamp.org's open-source codebase and curriculum. Learn math, programming,…","2014-12-24T17:49:19Z","2025-10-28T11:58:08Z","2025-10-28T10:17:16Z",430886,8583,42146,main
+  132750724,build-your-own-x,codecrafters-io/build-your-own-x,Master programming by recreating your favorite technologies from scratch.,"2018-05-09T12:03:18Z","2025-10-28T12:37:11Z","2025-10-10T18:45:01Z",430877,6332,40453,master
+  21737465,awesome,sindresorhus/awesome,😎 Awesome lists about all kinds of interesting topics,"2014-07-11T13:42:37Z","2025-10-28T12:40:21Z","2025-10-27T17:57:31Z",410052,8017,32029,main
+```
+
+## 相关资源
+
+* [字节级形式化模型](/zh/reference/efficiency-formalization) —— 与 JSON 相比的字节效率数学分析
+* [规范](/zh/reference/spec) —— 正式的 TOON 规范
+
+---
+
+---
+url: /zh/playground.md
+---
+
+
+---
+
+---
+url: /zh/cli.md
+description: 在命令行中将 JSON 转换为 TOON，或反向转换，支持 token 统计、流式处理和分隔符选项。
+---
+
+# 命令行接口
+
+`@toon-format/cli` 软件包可以在 JSON 与 TOON 之间双向转换。你可以用它在将 TOON 集成到应用程序之前先测算 token 节省量，也可以在 shell 工作流中与 `curl`、`jq` 等工具配合，通过管道对 JSON 执行 TOON 转换。该 CLI 支持标准输入/输出、token 统计、面向大型数据集的流式处理，以及库中提供的所有编码选项。
+
+该 CLI 基于 `@toon-format/toon` 的 TypeScript 实现构建，并遵循 [最新规范](/zh/reference/spec)。
+
+## 使用方法
+
+### 免安装使用
+
+使用 `npx` 无需安装即可运行该 CLI：
+
+::: code-group
+
+```bash [编码]
+npx @toon-format/cli input.json -o output.toon
+```
+
+```bash [解码]
+npx @toon-format/cli data.toon -o output.json
+```
+
+```bash [标准输入]
+echo '{"name": "Ada"}' | npx @toon-format/cli
+```
+
+:::
+
+### 全局安装
+
+如果要反复使用，也可以选择全局安装：
+
+::: code-group
+
+```bash [npm]
+npm install -g @toon-format/cli
+```
+
+```bash [pnpm]
+pnpm add -g @toon-format/cli
+```
+
+```bash [yarn]
+yarn global add @toon-format/cli
+```
+
+:::
+
+全局安装后，使用 `toon` 命令：
+
+```bash
+toon input.json -o output.toon
+```
+
+## 基本用法
+
+### 自动检测
+
+CLI 会根据文件扩展名自动检测操作类型：
+
+* `.json` 文件 → 编码（JSON 转 TOON）
+* `.toon` 文件 → 解码（TOON 转 JSON）
+
+从标准输入读取时，使用 `--encode` 或 `--decode` 选项指定操作（默认是编码）。
+
+::: code-group
+
+```bash [将 JSON 编码为 TOON]
+toon input.json -o output.toon
+```
+
+```bash [将 TOON 解码为 JSON]
+toon data.toon -o output.json
+```
+
+```bash [输出到标准输出]
+toon input.json
+```
+
+```bash [从标准输入管道传入]
+cat data.json | toon
+echo '{"name": "Ada"}' | toon
+```
+
+```bash [从标准输入解码]
+cat data.toon | toon --decode
+```
+
+:::
+
+按照惯例，TOON 文件使用 `.toon` 扩展名和临时媒体类型 `text/toon`（参见 [规范 §17](https://github.com/toon-format/spec/blob/main/SPEC.md#17-iana-considerations)）。
+
+### 标准输入
+
+省略输入参数，或使用 `-` 表示从标准输入读取。这样就能直接将其他命令的数据通过管道传入：
+
+```bash
+# 不需要参数
+cat data.json | toon
+
+# 使用连字符显式表示标准输入（效果相同）
+cat data.json | toon -
+
+# 从标准输入解码
+cat data.toon | toon --decode
+```
+
+## 性能
+
+### 流式输出
+
+编码和解码操作都使用流式输出，以增量方式写出，而不会在内存中构建完整的输出字符串。这使得该 CLI 处理大型数据集时无需额外配置也能保持高效。
+
+**JSON → TOON（编码）**：
+
+* 逐行流式写出 TOON。
+* 内存中不会保留完整的 TOON 字符串。
+
+**TOON → JSON（解码）**：
+
+* 使用与 `@toon-format/toon` 中 `decodeStream` API 相同的基于事件的流式解码器。
+* 流式写出 JSON token。
+* 内存中不会保留完整的 JSON 字符串。
+* 启用 `--expandPaths safe` 时，内部会回退为非流式解码，以便在写入 JSON 之前应用深度合并展开。
+
+以最小的内存占用处理大文件：
+
+```bash
+# 编码大型 JSON 文件
+toon huge-dataset.json -o output.toon
+
+# 解码大型 TOON 文件
+toon huge-dataset.toon -o output.json
+
+# 通过标准输入高效处理数百万条记录
+cat million-records.json | toon > output.toon
+cat million-records.toon | toon --decode > output.json
+```
+
+峰值内存占用与数据的嵌套深度有关，而非总数据量。这样一来，只要单个嵌套结构能够放入内存，就可以处理任意大小的文件。
+
+::: tip Token 统计
+在编码时使用 `--stats` 选项时，CLI 会构建一次完整的 TOON 字符串以计算准确的 token 数量。若要在超大文件上追求最大内存效率，请省略 `--stats`。
+:::
+
+## 选项
+
+| 选项 | 说明 |
+| ------ | ----------- |
+| `-o, --output <file>` | 输出文件路径（省略时打印到标准输出） |
+| `-e, --encode` | 强制编码模式（覆盖自动检测） |
+| `-d, --decode` | 强制解码模式（覆盖自动检测） |
+| `--delimiter <char>` | 数组分隔符：`,`（逗号）、制表符、`\|`（管道符）。在 bash/zsh 中以 `$'\t'` 传入制表符 |
+| `--indent <number>` | 缩进（默认：`2`） |
+| `--stats` | 显示 token 数量估算值及节省情况（仅编码时可用） |
+| `--no-strict` | 跳过解码校验（数组数量、缩进、首部分隔符）；重复键时后写入的值生效 |
+| `--keyFolding <mode>` | 键折叠模式：`off`、`safe`（默认：`off`） |
+| `--flattenDepth <number>` | 最多折叠的片段数（默认：`Infinity`）——需要配合 `--keyFolding safe` 使用 |
+| `--expandPaths <mode>` | 路径展开模式：`off`、`safe`（默认：`off`） |
+| `--verbose` | 显示完整的堆栈跟踪和错误原因链（默认：`false`） |
+
+## 高级示例
+
+### Token 统计
+
+编码时显示节省的 token 数量：
+
+```bash
+toon data.json --stats -o output.toon
+```
+
+这有助于你在将数据发送给大语言模型之前预估可节省的 token 开销。
+
+输出示例：
+
+```
+✔ Encoded data.json → output.toon
+
+ℹ Token estimates: ~15,145 (JSON) → ~8,745 (TOON)
+✔ Saved ~6,400 tokens (-42.3%)
+```
+
+### 分隔符选项
+
+TOON 支持三种分隔符：逗号（默认）、制表符和管道符。根据数据情况，使用其他分隔符可以进一步节省 token。
+
+::: code-group
+
+```bash [制表符分隔（bash/zsh）]
+toon data.json --delimiter $'\t' -o output.toon
+```
+
+```bash [竖线分隔]
+toon data.json --delimiter "|" -o output.toon
+```
+
+:::
+
+`--delimiter` 的值必须是实际的分隔符字符。在 bash/zsh 中，请使用 `$'\t'` 传入真正的制表符；字面量 `"\t"` 会被视为无效分隔符而被拒绝。
+
+**制表符分隔示例：**
+
+::: code-group
+
+```yaml [制表符]
+items[2	]{id	name	qty	price}:
   A1	Widget	2	9.99
   B2	Gadget	1	14.5
 ```
 
-For maximum token savings on large tabular data, combine tab delimiters with key folding:
-
-```ts
-encode(data, { delimiter: '\t', keyFolding: 'safe' })
+```yaml [逗号（默认）]
+items[2]{id,name,qty,price}:
+  A1,Widget,2,9.99
+  B2,Gadget,1,14.5
 ```
 
-**Choosing a Delimiter:**
+:::
 
-* **Comma (`,`)**: Default, widely understood, good for simple tabular data.
-* **Tab (`\t`)**: Best for LLM token efficiency, excellent for large datasets.
-* **Pipe (`|`)**: Alternative when commas appear frequently in data.
+::: tip
+制表符分隔通常比逗号更有利于降低 token 数，并减少对引号转义的需求。对于大型表格数据，可使用 `--delimiter $'\t'`（bash/zsh）尽可能节省 token。完整指导请参阅 [分隔符策略](/zh/reference/api#分隔符策略)。
+:::
+
+### 宽松解码
+
+跳过校验，实现更快、容错性更强的解码：
+
+```bash
+toon data.toon --no-strict -o output.json
+```
+
+使用 `--no-strict` 时，解码器不再强制要求数组数量匹配、缩进为整数倍，也不再检查首部分隔符是否一致。重复的同级键不再抛出错误——以最后写入的值为准。格式错误的数组首部会回退为普通的 `key: value` 行，而不是报错。
+
+### 解码错误输出
+
+当 TOON 文档解析失败时，CLI 会渲染出错的那一行，并用插入符号指向第一个非空白字符。制表符会显示为 `→`，这样插入符号所在的列就能反映解码器实际看到的内容。
+
+对于一个使用制表符缩进第二行的输入文件（此处用 `→` 表示）：
+
+```
+a:
+→b: 1
+```
+
+CLI 会打印：
+
+```
+ ERROR  Failed to decode TOON at line 2: Tabs are not allowed in indentation in strict mode
+
+  2 | →b: 1
+      ^
+```
+
+发生任何错误时，退出码均为 `1`。默认情况下会隐藏堆栈跟踪。传入 `--verbose` 可包含完整堆栈和底层错误原因链——在提交错误报告或诊断意外错误路径时很有用：
+
+```bash
+cat broken.toon | toon --decode --verbose
+```
+
+::: tip 程序化访问
+解码错误由库以 `ToonDecodeError` 实例的形式抛出。CLI 的插入符号渲染基于该类暴露的结构化 `line` 和 `source` 字段构建。如果你想在自己的代码中获得同样详细的诊断信息，请参阅 API 参考中的 [错误处理](/zh/reference/api#错误处理) 部分。
+:::
+
+### 标准输入工作流
+
+该 CLI 可以与 Unix 管道及其他命令行工具无缝集成：
+
+```bash
+# 将 API 响应转换为 TOON
+curl https://api.example.com/data | toon --stats
+
+# 处理大型数据集
+cat large-dataset.json | toon --delimiter $'\t' > output.toon
+
+# 与 jq 串联使用
+jq '.results' data.json | toon > filtered.toon
+```
+
+### 键折叠
+
+折叠嵌套包装层级以减少 token（自规范 v1.5 起支持）：
+
+::: code-group
+
+```bash [基础键折叠]
+toon input.json --keyFolding safe -o output.toon
+```
+
+```bash [限制折叠深度]
+toon input.json --keyFolding safe --flattenDepth 2 -o output.toon
+```
+
+:::
+
+**示例：**
+
+对于如下数据：
+
+```json
+{
+  "data": {
+    "metadata": {
+      "items": ["a", "b"]
+    }
+  }
+}
+```
+
+使用 `--keyFolding safe` 后，输出变为：
+
+```yaml
+data.metadata.items[2]: a,b
+```
+
+而不是：
+
+```yaml
+data:
+  metadata:
+    items[2]: a,b
+```
+
+### 路径展开
+
+在解码时从折叠的键还原嵌套结构：
+
+```bash
+toon data.toon --expandPaths safe -o output.json
+```
+
+这与 `--keyFolding safe` 搭配使用，可实现无损的往返转换。
+
+### 往返转换工作流
+
+```bash
+# 使用折叠进行编码
+toon input.json --keyFolding safe -o compressed.toon
+
+# 使用展开进行解码（恢复原始结构）
+toon compressed.toon --expandPaths safe -o output.json
+
+# 校验往返转换结果
+diff input.json output.json
+```
+
+### 组合选项
+
+组合使用多个选项以获得最大效率：
+
+```bash
+# 键折叠 + 制表符分隔 + 统计信息
+toon data.json --keyFolding safe --delimiter $'\t' --stats -o output.toon
+```
+
+---
+
+---
+url: /zh/ecosystem/tools-and-playgrounds.md
+description: TOON Playground、CLI、编辑器支持和生态工具。
+---
+
+# 工具与 Playground
+
+使用以下工具以交互方式体验 TOON 格式，进行 token 对比、格式转换和校验。
+
+## Playground
+
+### 官方 Playground
+
+[TOON Playground](/zh/playground)（在线试用环境）支持将 JSON 或 YAML 实时转换为 TOON、对比 token 数量，并通过 URL 分享实验结果。
+
+### 社区 Playground
+
+* [格式 Token 化 Playground](https://www.curiouslychase.com/playground/format-tokenization-exploration)
+* [TOON Tools](https://toontools.vercel.app/)
+
+## CLI 工具
+
+官方 TOON CLI 提供命令行转换、token 统计以及完整的编码/解码功能。完整文档请参阅 [CLI 参考](/zh/cli/)。
+
+```bash
+npx @toon-format/cli input.json --stats -o output.toon
+```
+
+## 编辑器支持
+
+### VS Code
+
+[TOON Language Support](https://marketplace.visualstudio.com/items?itemName=vishalraut.vscode-toon) —— 语法高亮、校验、转换和 token 分析。
+
+可从 [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=vishalraut.vscode-toon) 安装，或通过命令行安装：
+
+```bash
+code --install-extension vishalraut.vscode-toon
+```
+
+### Tree-sitter 语法
+
+[tree-sitter-toon](https://github.com/3swordman/tree-sitter-toon) —— 适用于兼容 Tree-sitter 的编辑器（Neovim、Helix、Emacs、Zed）的语法定义。
+
+### Neovim
+
+[toon.nvim](https://github.com/thalesgelinger/toon.nvim) —— 基于 Lua 的 Neovim 插件。
+
+### 其他编辑器
+
+可以使用 YAML 语法高亮作为近似方案。大多数编辑器都支持将 `.toon` 文件关联到 YAML 语言模式。
+
+## 数据库
+
+### ToonStore
+
+[ToonStore](https://github.com/Kalama-Tech/toonstoredb) —— 一个兼容 Redis、以 TOON 格式存储数据的嵌入式数据库，采用 Rust 实现。
+
+## ORM
+
+### TORM
+
+[TORM](https://github.com/Kalama-Tech/torm) —— 与 ToonStore 数据库配合使用的 ORM，提供适用于 Node.js、Python、Go 和 PHP 的 SDK。
+
+## Web API
+
+如果你正在构建需要处理 TOON 的 Web 应用，可以在浏览器中使用这个 TypeScript 库：
+
+```ts
+import { decode, encode } from '@toon-format/toon'
+
+// 可在浏览器、Node.js、Deno 和 Bun 中运行
+const toon = encode(data)
+const data = decode(toon)
+```
+
+详情请参阅 [API 参考](/zh/reference/api)。
+
+## MCP
+
+### Tooner
+
+[Tooner](https://github.com/chaindead/tooner) —— 将工具调用返回的 JSON 结果转换为 TOON 的 MCP 代理。
+
+---
+
+---
+url: /zh/ecosystem/implementations.md
+description: 跨语言的官方与社区 TOON 实现，以及贡献指引。
+---
+
+# 实现列表
+
+TOON 在多种编程语言中拥有官方与社区实现。所有实现都力求遵循同一份 [规范](https://github.com/toon-format/spec)，以确保兼容性和互操作性。
+
+本文档站点中的代码示例默认使用 TypeScript 实现，但相关格式和概念同样适用于所有语言。
+
+> \[!NOTE]
+> 在其他语言中实现 TOON 时，请遵循 [规范](https://github.com/toon-format/spec/blob/main/SPEC.md) 以确保各实现之间的兼容性。[一致性测试](https://github.com/toon-format/spec/tree/main/tests) 提供了与语言无关的测试用例，用于校验你的实现。
+
+## 官方实现
+
+以下实现由专门团队积极维护。欢迎参与贡献！你可以在相应仓库中提交 issue、发起 PR，或讨论实现细节。
+
+| 语言 | 仓库 | 状态 | 维护者 |
+|----------|------------|--------|------------|
+| **.NET** | [toon-dotnet](https://github.com/toon-format/toon-dotnet) | 开发中 | 官方团队 |
+| **Dart** | [toon-dart](https://github.com/toon-format/toon-dart) | 开发中 | 官方团队 |
+| **Go** | [toon-go](https://github.com/toon-format/toon-go) | 开发中 | 官方团队 |
+| **Java** | [toon-java](https://github.com/toon-format/toon-java) | ✅ 稳定 | 官方团队 |
+| **Julia** | [ToonFormat.jl](https://github.com/toon-format/ToonFormat.jl) | ✅ 稳定 | 官方团队 |
+| **Python** | [toon-python](https://github.com/toon-format/toon-python) | ✅ 稳定 | 官方团队 |
+| **Rust** | [toon-rust](https://github.com/toon-format/toon-rust) | ✅ 稳定 | 官方团队 |
+| **Swift** | [toon-swift](https://github.com/toon-format/toon-swift) | ✅ 稳定 | 官方团队 |
+| **TypeScript/JavaScript** | [toon](https://github.com/toon-format/toon/tree/main/packages/toon) | ✅ 稳定 | 官方团队 |
+
+## 社区实现
+
+社区成员为其他语言创建了以下实现：
+
+| 语言 | 仓库 | 维护者 |
+|----------|------------|------------|
+| **Apex** | [ApexToon](https://github.com/Eacaw/ApexToon) | [@Eacaw](https://github.com/Eacaw) |
+| **C** | [TOONc](https://github.com/UsboKirishima/TOONc) | [@UsboKirishima](https://github.com/UsboKirishima) |
+| **C++** | [ctoon](https://github.com/mohammadraziei/ctoon) | [@mohammadraziei](https://github.com/mohammadraziei) |
+| **C#** | [ToonEncoder](https://github.com/Cysharp/ToonEncoder) | [@Cysharp](https://github.com/Cysharp/ToonEncoder) |
+| **Clojure** | [toon](https://github.com/vadelabs/toon) | [@vadelabs](https://github.com/vadelabs) |
+| **Crystal** | [toon-crystal](https://github.com/mamantoha/toon-crystal) | [@mamantoha](https://github.com/mamantoha) |
+| **Delphi** | [delphi-toon](https://github.com/ernestoalconada/delphi-toon) | [@ernestoalconada](https://github.com/ernestoalconada) |
+| **Elixir** | [toon\_ex](https://github.com/kentaro/toon_ex) | [@kentaro](https://github.com/kentaro) |
+| **Gleam** | [toon\_codec](https://github.com/axelbellec/toon_codec) | [@axelbellec](https://github.com/axelbellec) |
+| **Go** | [gotoon](https://github.com/alpkeskin/gotoon) | [@alpkeskin](https://github.com/alpkeskin) |
+| **Java** | [json-io](https://github.com/jdereg/json-io) | [@jdereg](https://github.com/jdereg) |
+| **Kotlin** | [ktoon](https://github.com/lukelast/ktoon)| [@lukelast](https://github.com/lukelast) |
+| **Laravel Framework** | [laravel-toon](https://github.com/mischasigtermans/laravel-toon) | [@mischasigtermans](https://github.com/mischasigtermans) |
+| **Lua/Neovim** | [toon.nvim](https://github.com/thalesgelinger/toon.nvim) | [@thalesgelinger](https://github.com/thalesgelinger) |
+| **Matlab** | [ctoon](https://github.com/mohammadraziei/ctoon) | [@mohammadraziei](https://github.com/mohammadraziei) |
+| **OCaml** | [ocaml-toon](https://github.com/davesnx/ocaml-toon) | [@davesnx](https://github.com/davesnx) |
+| **Perl** | [Data::TOON](https://github.com/ytnobody/p5-Data-TOON) | [@ytnobody](https://github.com/ytnobody) |
+| **PHP** | [toon-php](https://github.com/HelgeSverre/toon-php) | [@HelgeSverre](https://github.com/HelgeSverre) |
+| **Python**（C++ 后端） | [ctoon](https://github.com/mohammadraziei/ctoon) | [@mohammadraziei](https://github.com/mohammadraziei) |
+| **Python**（Rust 后端） | [toons](https://github.com/alesanfra/toons) | [@alesanfra](https://github.com/alesanfra) |
+| **R** | [toon](https://github.com/laresbernardo/toon) | [@laresbernardo](https://github.com/laresbernardo) |
+| **Ruby** | [toon-ruby](https://github.com/andrepcg/toon-ruby) | [@andrepcg](https://github.com/andrepcg) |
+| **Scala** | [toon4s](https://github.com/vim89/toon4s) | [@vim89](https://github.com/vim89) |
+| **Zig** | [toon-zig](https://github.com/LatentEvals/toon-zig) | [@montanaflynn](https://github.com/montanaflynn) |
+
+## 贡献一个新的实现
+
+想为某个新的语言构建 TOON 实现吗？太棒了！以下是入门的一些步骤：
+
+1. **遵循规范**：实现 [最新规范](https://github.com/toon-format/spec/blob/main/SPEC.md)。
+2. **添加测试**：运行 [一致性测试套件](https://github.com/toon-format/spec/tree/main/tests)。
+3. **编写使用文档**：提供一份清晰的 README，包含安装和使用示例。
+4. **分享出来**：提交一个 PR，将你的实现添加到 [github.com/toon-format/toon](https://github.com/toon-format/toon) 的 README 中。
 
 ---
 
@@ -1547,6 +2684,1857 @@ encode(data, { delimiter: '\t', keyFolding: 'safe' })
 * **逗号(`,`)**：默认选项，广泛易懂，适合简单的表格数据。
 * **制表符(`\t`)**：通常能为大语言模型提供最佳 token 使用效率，适合大型数据集。
 * **竖线(`|`)**：当数据中经常出现逗号时的可选替代。
+
+---
+
+---
+url: /zh/reference/syntax-cheatsheet.md
+description: 快速了解 JSON 到 TOON 的映射关系，包括对象、数组、引号、键折叠和类型转换。
+---
+
+# 语法速查表
+
+本页提供将 JSON 映射为 TOON 格式的语法速查表。若需要了解完整的语法规则和边界情况，请参阅 [规范](/zh/reference/spec)。
+
+## 对象
+
+::: code-group
+
+```json [JSON]
+{
+  "id": 1,
+  "name": "Ada"
+}
+```
+
+```yaml [TOON]
+id: 1
+name: Ada
+```
+
+:::
+
+## 嵌套对象
+
+::: code-group
+
+```json [JSON]
+{
+  "user": {
+    "id": 1,
+    "name": "Ada"
+  }
+}
+```
+
+```yaml [TOON]
+user:
+  id: 1
+  name: Ada
+```
+
+:::
+
+## 基本类型数组
+
+::: code-group
+
+```json [JSON]
+{
+  "tags": ["foo", "bar", "baz"]
+}
+```
+
+```yaml [TOON]
+tags[3]: foo,bar,baz
+```
+
+:::
+
+## 表格化数组
+
+::: code-group
+
+```json [JSON]
+{
+  "items": [
+    { "id": 1, "qty": 5 },
+    { "id": 2, "qty": 3 }
+  ]
+}
+```
+
+```yaml [TOON]
+items[2]{id,qty}:
+  1,5
+  2,3
+```
+
+:::
+
+## 混合数组和非一致数组
+
+::: code-group
+
+```json [JSON]
+{
+  "items": [1, { "a": 1 }, "x"]
+}
+```
+
+```yaml [TOON]
+items[3]:
+  - 1
+  - a: 1
+  - x
+```
+
+:::
+
+> \[!NOTE]
+> 当列表项对象的第一个字段是表格化数组时，表格化首部会出现在连字符所在行。行数据相对于连字符多缩进两级，其他字段多缩进一级。这是该模式的规范编码方式。
+
+::: code-group
+
+```yaml [多字段对象]
+items[1]:
+  - users[2]{id,name}:
+      1,Ada
+      2,Bob
+    status: active
+```
+
+```yaml [单字段对象]
+items[1]:
+  - users[2]{id,name}:
+      1,Ada
+      2,Bob
+```
+
+:::
+
+## 数组的数组
+
+::: code-group
+
+```json [JSON]
+{
+  "pairs": [[1, 2], [3, 4]]
+}
+```
+
+```yaml [TOON]
+pairs[2]:
+  - [2]: 1,2
+  - [2]: 3,4
+```
+
+:::
+
+## 根数组
+
+::: code-group
+
+```json [JSON]
+["x", "y", "z"]
+```
+
+```yaml [TOON]
+[3]: x,y,z
+```
+
+:::
+
+## 空容器
+
+::: code-group
+
+```json [空对象]
+{}
+```
+
+```yaml [空对象]
+(空输出)
+```
+
+:::
+
+::: code-group
+
+```json [空数组]
+{
+  "items": []
+}
+```
+
+```yaml [空数组]
+items: []
+```
+
+:::
+
+## 必须使用引号的特殊情况
+
+### 看起来像字面量的字符串
+
+::: code-group
+
+```json [JSON]
+{
+  "version": "123",
+  "enabled": "true"
+}
+```
+
+```yaml [TOON]
+version: "123"
+enabled: "true"
+```
+
+:::
+
+这些字符串必须加引号，因为它们看起来像数字/布尔值。
+
+### 包含分隔符的字符串
+
+::: code-group
+
+```json [JSON]
+{
+  "note": "hello, world"
+}
+```
+
+```yaml [TOON]
+note: "hello, world"
+```
+
+:::
+
+当字符串包含相关分隔符时，必须加引号：在数组作用域内为生效分隔符；在对象字段值中为文档级分隔符（默认为逗号）。
+
+### 带开头/结尾空格的字符串
+
+::: code-group
+
+```json [JSON]
+{
+  "message": " padded "
+}
+```
+
+```yaml [TOON]
+message: " padded "
+```
+
+:::
+
+### 空字符串
+
+::: code-group
+
+```json [JSON]
+{
+  "name": ""
+}
+```
+
+```yaml [TOON]
+name: ""
+```
+
+:::
+
+## 引号规则汇总
+
+在以下情况下，字符串**必须**加引号：
+
+* 空字符串（`""`）
+* 开头或结尾是空格字符
+* 值等于 `true`、`false` 或 `null`（区分大小写）
+* 看起来像数字（例如 `"42"`、`"-3.14"`、`"1e-6"`、`"05"`）
+* 包含特殊字符：`:`、`"`、`\`、`[`、`]`、`{`、`}`，或任何控制字符（U+0000–U+001F，包括换行符/制表符/回车符）
+* 包含相关的分隔符（数组作用范围内为生效分隔符，其他情况下为文档级分隔符）
+* 值等于 `"-"`，或以 `"-"` 开头且后面还有其他字符
+
+除上述情况，字符串都可以不加引号。Unicode、emoji 以及内部（非开头/结尾）带空格的字符串都可以安全地不加引号：
+
+```yaml
+message: Hello 世界 👋
+note: This has inner spaces
+```
+
+## 转义序列
+
+带引号的字符串中允许使用六种转义字符：
+
+| 字符 | 转义 |
+|-----------|--------|
+| 反斜杠（`\`） | `\\` |
+| 双引号（`"`） | `\"` |
+| 换行符(U+000A) | `\n` |
+| 回车符(U+000D) | `\r` |
+| 制表符(U+0009) | `\t` |
+| 其他任意 U+0000–U+001F 控制字符 | `\uXXXX` |
+
+其他转义方式（例如 `\x`、`\0`、`\b`）一律会被拒绝，未配对的 UTF-16 代理码位 `\uXXXX`（U+D800–U+DFFF）同样会被拒绝。
+
+## 数组首部
+
+### 基础首部
+
+```
+key[N]:
+```
+
+* `N` = 数组长度
+* 默认分隔符：逗号
+
+### 表格化首部
+
+```
+key[N]{field1,field2,field3}:
+```
+
+* `N` = 数组长度
+* `{fields}` = 列名
+* 默认分隔符：逗号
+
+### 备选分隔符
+
+::: code-group
+
+```yaml [制表符分隔]
+items[2	]{id	name}:
+  1	Alice
+  2	Bob
+```
+
+```yaml [竖线分隔]
+items[2|]{id|name}:
+  1|Alice
+  2|Bob
+```
+
+:::
+
+分隔符符号会出现在方括号和花括号内。
+
+## 键折叠（可选）
+
+标准嵌套：
+
+```yaml
+data:
+  metadata:
+    items[2]: a,b
+```
+
+启用键折叠后(`keyFolding: 'safe'`)：
+
+```yaml
+data.metadata.items[2]: a,b
+```
+
+详情请参阅 [格式概览——键折叠](/zh/guide/format-overview#键折叠-可选)。
+
+## 类型转换
+
+| 输入 | 输出 |
+|-------|--------|
+| 位于 `[1e-6, 1e21)` 区间内的有限数值，或零 | 规范的十进制形式 |
+| 超出该范围的有限数字 | 允许使用指数记法 |
+| `NaN`、`Infinity`、`-Infinity` | `null` |
+| `BigInt`（可无精度损失地转换为 Number） | Number |
+| `BigInt`（不可无损转换） | 带引号的十进制字符串（例如 `"9007199254740993"`） |
+| `Date` | 带引号的 ISO 字符串（例如 `"2025-01-01T00:00:00.000Z"`） |
+| `Set` | 规范化后的值组成的数组 |
+| `Map` | 以 `String(key)` 为键的对象 |
+| `undefined`、`function`、`symbol` | `null` |
+
+::: info
+TOON 本身并未规定 `Date` 应如何编码——规范将其留给具体实现决定。本库以带引号的 ISO 8601 字符串形式输出；其他实现可能会有不同的选择。
+:::
+
+---
+
+---
+url: /zh/reference/spec.md
+description: TOON 规范导览：章节结构、合规性检查清单、媒体类型和版本管理。
+---
+
+# 规范
+
+[TOON 规范](https://github.com/toon-format/spec) 是实现编码器、解码器和校验器的权威参考。它定义了具体语法、规范性的编码/解码行为，以及严格模式下的校验规则。
+
+如果只是*使用* TOON，无需阅读本页；本页主要面向实现者和贡献者。如果你想学习如何使用 TOON，请从 [快速开始](/zh/guide/getting-started) 指南入手。
+
+> \[!NOTE]
+> TOON 规范已经稳定，但仍在持续演进中。规范并非一成不变，欢迎通过贡献内容或分享反馈来参与其后续发展。
+
+## 当前版本
+
+**规范 v{{ $spec.version }}**（2026-05-20）是当前已发布的工作草案。该版本已足够稳定并可作为实现依据，但尚未定稿；详情请参阅规范中的 “Status of This Document” 部分。
+
+## 媒体类型与文件扩展名
+
+规范在 [§17](https://github.com/toon-format/spec/blob/main/SPEC.md#17-iana-considerations) 中定义了临时媒体类型和文件扩展名：
+
+* **媒体类型：** `text/toon`（临时，尚未在 IANA 注册；仅支持 UTF-8）
+* **文件扩展名：** `.toon`
+
+TOON 文档始终使用 UTF-8 编码和 LF（`\n`）换行符；可选的 `charset` 参数如果存在，其值为 `utf-8`。
+
+## 规范导览
+
+### 核心概念
+
+[§1 术语与约定](https://github.com/toon-format/spec/blob/main/SPEC.md#1-terminology-and-conventions)：
+定义了“缩进层级”“生效分隔符”“严格模式”等关键术语，以及 RFC2119 关键词（MUST、SHOULD、MAY）。
+
+[§2 数据模型](https://github.com/toon-format/spec/blob/main/SPEC.md#2-data-model)：
+规定了 JSON 数据模型（对象、数组、基本类型）、数组和对象的顺序要求，以及规范数字格式（位于 `[1e-6, 1e21)` 范围内或为零的值使用规范十进制；超出该范围允许使用指数记法）。
+
+[§3 编码规范化](https://github.com/toon-format/spec/blob/main/SPEC.md#3-encoding-normalization-reference-encoder)：
+定义了非 JSON 类型（Date、BigInt、NaN、Infinity、undefined 等）在编码前应如何规范化。编码器实现者应重点阅读这一节。
+
+[§4 解码解释](https://github.com/toon-format/spec/blob/main/SPEC.md#4-decoding-interpretation-reference-decoder)：
+规定了解码器如何将文本标记映射为宿主语言中的值（带引号的字符串、不带引号的基本类型，以及解析数字时对前导零的处理）。在参考实现中，解码器默认启用严格模式（`strict = true`）；严格模式错误见 §14。
+
+### 语法规则
+
+[§5 具体语法与根形式](https://github.com/toon-format/spec/blob/main/SPEC.md#5-concrete-syntax-and-root-form)：
+定义了 TOON 这种面向行、基于缩进的表示法，并说明如何判断根值是对象、数组还是基本类型。
+
+[§6 首部语法](https://github.com/toon-format/spec/blob/main/SPEC.md#6-header-syntax-normative)：
+给出数组首部的规范性 ABNF 语法：`key[N<delim?>]{fields}:`。该节规定了方括号片段、分隔符符号和字段列表。
+
+[§7 字符串与键](https://github.com/toon-format/spec/blob/main/SPEC.md#7-strings-and-keys)：
+完整的引号规则（字符串何时必须加引号）、合法转义序列（仅包括 `\\`、`\"`、`\n`、`\r`、`\t`，以及用于其他 U+0000–U+001F 控制字符的 `\uXXXX`），以及键的编码要求。
+
+[§8 对象](https://github.com/toon-format/spec/blob/main/SPEC.md#8-objects)：
+对象字段编码（`key: value`）、嵌套规则、键顺序保留，以及空对象处理。
+
+[§9 数组](https://github.com/toon-format/spec/blob/main/SPEC.md#9-arrays)：
+涵盖所有数组形式：基本类型数组（内联）、对象数组（表格化）、混合数组/非一致数组（列表），以及数组的数组。该节还包括表格化检测要求。
+
+[§10 作为列表项的对象](https://github.com/toon-format/spec/blob/main/SPEC.md#10-objects-as-list-items)：
+列表项中对象的缩进规则（第一个字段位于连字符所在行），包括第一个字段为表格化数组时的规范模式（首部位于连字符所在行，行数据缩进深度为 +2，同级字段缩进深度为 +1）。
+
+[§11 分隔符](https://github.com/toon-format/spec/blob/main/SPEC.md#11-delimiters)：
+分隔符作用域（文档级分隔符与生效分隔符）、基于分隔符的引号处理，以及逗号、制表符、竖线分隔符的解析规则。
+
+[§12 缩进与空白](https://github.com/toon-format/spec/blob/main/SPEC.md#12-indentation-and-whitespace)：
+编码要求（一致的空格缩进、缩进中不允许使用制表符、无行尾空格/换行符）以及解码规则（严格和非严格缩进处理）。
+
+### 合规性与校验
+
+[§13 合规性与选项](https://github.com/toon-format/spec/blob/main/SPEC.md#13-conformance-and-options)：
+定义了合规类型（编码器、解码器、校验器）、标准化选项以及合规检查清单。
+
+[§13.4 键折叠与路径展开](https://github.com/toon-format/spec/blob/main/SPEC.md#134-key-folding-and-path-expansion)：
+可选的编码器特性（键折叠）和解码器特性（路径展开），用于折叠/展开带点号的路径；该节还包含深度合并语义，以及严格/非严格模式下的冲突解决方式。
+
+[§14 严格模式下的错误与诊断](https://github.com/toon-format/spec/blob/main/SPEC.md#14-strict-mode-errors-and-diagnostics-authoritative-checklist)：
+严格模式下各类错误的**权威检查清单**：数组数量与宽度不匹配（§14.1）、语法和结构错误（§14.2）、路径展开冲突（§14.3），以及重复的同级键（§14.4）。
+
+### 实现指导
+
+[§15 安全考量](https://github.com/toon-format/spec/blob/main/SPEC.md#15-security-considerations)：
+与安全相关的注入风险、引号规则和严格模式检查。
+
+[§16 国际化](https://github.com/toon-format/spec/blob/main/SPEC.md#16-internationalization)：
+Unicode 处理，以及不受语言环境影响的数字文本格式。
+
+[§17 IANA 考量](https://github.com/toon-format/spec/blob/main/SPEC.md#17-iana-considerations)：
+媒体类型注册计划及临时状态。
+
+[§18 版本管理与可扩展性](https://github.com/toon-format/spec/blob/main/SPEC.md#18-versioning-and-extensibility)：
+规范的演进方式：主版本和次版本变更，以及可扩展性策略。
+
+[§19 知识产权考量](https://github.com/toon-format/spec/blob/main/SPEC.md#19-intellectual-property-considerations)：
+规范的许可和知识产权条款。
+
+[附录 F：宿主类型规范化示例](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-f-host-type-normalization-examples-informative)：
+为 Go、JavaScript、Python、Rust 和 Java 实现提供参考说明，介绍各语言特有类型的规范化方式。
+
+[附录 C：测试套件与合规性](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-c-test-suite-and-compliance-informative)：
+位于 [github.com/toon-format/spec/tree/main/tests](https://github.com/toon-format/spec/tree/main/tests) 的参考测试套件，可用于校验各实现。
+
+## 规范章节一览
+
+| 章节 | 主题 | 何时阅读 |
+|---------|-------|--------------|
+| §1–4 | 数据模型、规范化、解码 | 实现编码器/解码器时 |
+| §5–6 | 语法、首部、根形式 | 实现解析器时 |
+| §7 | 字符串、键、引号、转义 | 实现字符串处理时 |
+| §8–10 | 对象、数组、列表项 | 实现结构编码时 |
+| §11–12 | 分隔符、缩进、空白 | 实现格式化与校验时 |
+| §13 | 合规性、选项、键折叠/路径展开 | 实现选项与特性时 |
+| §14 | 严格模式错误 | 实现校验器时 |
+| §15–16 | 安全、国际化 | 运行和部署时的注意事项 |
+| §17–19 | IANA、版本管理、知识产权 | 生态与许可 |
+
+## 合规性检查清单
+
+规范包含三份合规性检查清单：
+
+### 编码器检查清单（§13.1） [↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#131-encoder-conformance-checklist)
+
+关键要求：
+
+* 生成 UTF-8 编码、LF 换行符的输出
+* 使用一致的缩进（默认 2 个空格，不使用制表符）
+* 在带引号的字符串中转义 `\\`、`\"`、`\n`、`\r`、`\t`，对其他任意 U+0000–U+001F 控制字符使用 `\uXXXX`；拒绝未配对的 UTF-16 代理码位
+* 对包含生效分隔符、冒号或结构性字符的字符串加引号
+* 输出与实际数量一致的数组长度 `[N]`
+* 保留对象键的顺序
+* 按 §2 输出数字（对于 `[1e-6, 1e21)` 范围内或为零的值使用规范十进制；超出该范围允许使用指数记法）
+* 将 `-0` 转换为 `0`，将 `NaN`/±Infinity 转换为 `null`
+* 以小写字面量形式输出布尔值和 null（`true`、`false`、`null`）
+* 不得包含行尾空格或末尾换行符
+* 启用 `keyFolding="safe"` 时，折叠必须遵循 §13.4：
+  * 只折叠合法标识符片段的键（字母/数字/下划线，不含点号），
+  * 不得与现有的同级键产生冲突，
+  * 不得折叠需要加引号的片段。
+* 设置了 `flattenDepth` 时，折叠必须在配置的片段数处停止（§13.4）。
+
+### 解码器检查清单（§13.2） [↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#132-decoder-conformance-checklist)
+
+关键要求：
+
+* 按 §6 解析数组首部（长度、分隔符、字段）
+* 仅使用生效分隔符拆分内联数组和表格化行
+* 只使用合法转义对带引号的字符串进行反转义
+* 为不带引号的值判定类型：true/false/null → 布尔值/null，数字 → 数字，其他 → 字符串
+* 在 `strict=true` 时强制执行严格模式规则
+* 保留数组顺序和对象键顺序
+* 启用 `expandPaths="safe"` 时，按 §13.4 将带点号的键展开为嵌套对象：
+  * 按 `.` 拆分，仅当所有片段均为合法标识符片段时才进行展开，
+  * 对重叠的路径进行深度合并（对象 + 对象），
+  * 不对数组执行按元素的合并。
+* 当 `expandPaths="safe"` 且 `strict=true`（默认）时，遇到任何展开冲突都必须报错（§14.3）。
+* 当 `expandPaths="safe"` 且 `strict=false` 时，必须采用确定性的“最后写入者优先”（LWW）冲突解决方式（§13.4）。
+
+### 校验器检查清单（§13.3） [↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#133-validator-conformance-checklist)
+
+校验器应当验证：
+
+* 结构性合规（首部、缩进、列表标记）
+* 空白不变式（无行尾空格/换行符）
+* 首部与行数据之间的分隔符一致性
+* 实际数组长度与声明的 `[N]` 相符
+* 所有严格模式要求（包括启用时的路径展开冲突）
+
+## 版本管理
+
+规范使用语义化版本（主版本号、次版本号）：
+
+* **主版本**（例如 v2 → v3）：破坏性变更，与之前版本不兼容
+* **次版本**（例如 v3.1 → v3.2）：澄清说明、新增要求，或向后兼容的补充内容
+
+详细的版本历史请参阅 [附录 D：文档变更日志](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-d-document-changelog-informative)。
+
+## 为规范做贡献
+
+该规范由社区在 [github.com/toon-format/spec](https://github.com/toon-format/spec) 上维护。我们欢迎各种形式的贡献：报告歧义或错误、提出澄清说明和示例、向参考测试套件添加测试用例，或讨论边界情况和规范性行为。你的反馈有助于推动这一格式的发展。
+
+---
+
+---
+url: /zh/reference/efficiency-formalization.md
+description: TOON 与 JSON 在不同结构类型下的字节级开销模型，包含公式和实例推导。
+---
+
+# TOON 与 JSON 对比：字节级效率模型
+
+本文从数学角度分析不同数据结构下 TOON 相对于 JSON 的字节效率。
+
+::: info 本文档的范围
+本页从理论角度比较 TOON 与 JSON 的字符级开销。如需查看实际基准测试和 token 计数，请参阅 [性能基准](/zh/guide/benchmarks)。本文属于**进阶参考资料，不具有规范效力**。它从数学角度解释 TOON 的设计思路，但不改变 TOON 规范本身。
+:::
+
+## 概述
+
+标准 JSON 会引入额外的结构性字符。这会增加 token 用量和推理成本。本页从字节级对 TOON 与 JSON 进行形式化比较，评估 TOON 能否通过减少结构性冗余获得可量化的效率提升。
+
+本文的比较基于几个前提：JSON 采用紧凑形式，TOON 采用规范格式。键和标点均为 ASCII。嵌套深度较浅或中等。大多数字符串无需加引号。在这些前提下，除“数组的数组”外，TOON 在本文分析的各类数据结构中，结构性开销都低于紧凑 JSON。
+
+### 关键发现
+
+* **表格化数组** 是 TOON 最适合的场景。行数和字段数越多，效率提升越明显，并且呈线性增长。
+* **简单对象和基本类型数组** 通常能稳定减少字节数，节省量与字段数或元素数成正比。
+* **嵌套对象** 可受益于较低的结构性开销。但缩进也会带来额外成本。嵌套越深，TOON 的优势越小。嵌套足够深时，紧凑 JSON 反而可能比 TOON 更省字节。
+* **数组的数组** 是本分析中唯一 TOON 效率低于 JSON 的结构。原因是 TOON 需要显式的列表标记和内部数组首部。
+
+## 方法论
+
+我们分别为 JSON 和 TOON 定义递归的字节长度函数：$L\_{\text{json}}$ 和 $L\_{\text{toon}}$。然后推导二者的字节差值：
+
+$$
+\Delta = L\_{\text{json}}(\Omega) - L\_{\text{toon}}(\Omega)
+$$
+
+其中 $\Omega$ 表示待比较的数据结构。若 $\Delta > 0$，则表示 TOON 在该结构上使用的字节数少于 JSON。
+
+::: info 范围与假设
+
+* **紧凑 JSON**：假定 JSON 是紧凑的（字符串之外没有空格或换行符）。字节数按此紧凑形式计算。
+* **规范 TOON**：假定 TOON 遵循规范格式。缩进为 2 个空格，`:` 后恰好一个空格，数组和字段列表中逗号后无空格，也没有行尾空格。
+* **键与字符串**：所有键都是“简单”的 ASCII 标识符风格键。也就是说，它们：
+
+  * 在 JSON 中必须加引号，并且
+  * 在 TOON 中可以不加引号（不含任何会强制要求加引号的字符）。
+
+  许多示例假定值为数字、布尔值、null，或符合 TOON 非引号字符串规则、但在 JSON 中必须加引号的字符串。
+* **数字**：仅在本分析中，假定两种格式使用相同的规范十进制表示。JSON 可以使用指数记法。但为单独分析结构性差异，本文忽略这一点。
+* **ASCII/UTF-8**：假定键和结构性 token 均为 ASCII。因此，字节长度等于字符数（$|x|*{\text{utf8}} = |x|*{\text{char}}$）。非 ASCII 内容对两种格式的影响类似，不会改变结构性结论。
+* **嵌套深度**：本文针对扁平结构和单层嵌套给出闭式表达式。TOON 中每增加一层嵌套，每个嵌套行就会增加 2 字节缩进。嵌套足够深时，紧凑 JSON 的大括号可能比 TOON 的缩进更省字节（参见 [何时不使用 TOON](/zh/guide/getting-started#何时不使用-toon)）。
+* **字节数 vs token 数**：现代大语言模型分词器基于 UTF-8 字节工作。因此，字节长度可以作为 token 数的上界和一阶近似。不过，二者并不是严格线性映射。
+  :::
+
+可以把它理解为一个简化的结构模型。它先剥离真实数据中的各种干扰因素，只关注一个问题：“如果只计算结构性字符，JSON 和 TOON 相比如何？”
+
+## 形式化记号
+
+### 数据模型
+
+设 $\omega$ 为一个基本类型值，满足 $\omega \in {\text{string, number, boolean, null}}$。
+
+设 $\mathcal{O}$ 表示由 $n$ 个键值对组成的对象：
+
+$$
+\mathcal{O} = {(k\_1, v\_1), (k\_2, v\_2), \dots, (k\_n, v\_n)}
+$$
+
+设 $\mathcal{A}$ 表示由 $n$ 个元素组成的数组：
+
+$$
+\mathcal{A} = {v\_1, v\_2, \dots, v\_n}
+$$
+
+其中：
+
+* $k\_i$ 是键（字符串）
+* $v\_i$ 可以是基本类型值 $\omega$、对象 $\mathcal{O}$，或数组 $\mathcal{A}$
+
+因此：$v\_i \in {\omega, \mathcal{O}, \mathcal{A}}$
+
+### 字符串长度
+
+设 $\mathcal{S}$ 为合法 Unicode 字符串的集合。对于任意字符串 $x \in \mathcal{S}$，我们用 $|x|\_{\text{utf8}}$ 表示 $x$ 在 UTF-8 编码下的字节长度。
+
+### 整数长度
+
+设 $n \in \mathbb{Z}\_{\ge 0}$ 为非负整数。以十进制表示 $n$ 所需的字节数为：
+
+$$
+L\_{\text{num}}(n) = \begin{cases}
+1 & \text{if } n = 0 \\
+\lfloor \log\_{10}(|n|) \rfloor + 1 & \text{if } n > 0
+\end{cases}
+$$
+
+## JSON 字节长度函数
+
+对于具有 $n$ 个键的扁平对象：
+
+$$
+L\_{\text{json}}(\mathcal{O}) = \underbrace{2}*{{}} + \sum*{i=1}^{n} (L\_{\text{str}}(k\_i) + \underbrace{1}*{:} + L*{\text{json}}(v\_i)) + \underbrace{(n-1)}\_{\text{逗号}}
+$$
+
+其中 $L\_{\text{str}}(k)$ 是键的长度，包含必需的引号：
+
+$$
+L\_{\text{str}}(k) = |k|*{\text{utf8}} + \underbrace{2}*{\text{引号}}
+$$
+
+### JSON 基本类型值
+
+当 $v\_i$ 是基本数据类型 $\omega$ 时：
+
+| 类型 | 公式 |
+|------|---------|
+| 字符串 | $L\_{\text{str}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}} + 2$ |
+| 数字 | $L\_{\text{num}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
+| 布尔值 | $L\_{\text{bool}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
+| Null | $L\_{\text{null}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
+
+### JSON 数组
+
+当 $v\_i$ 是数组 $\mathcal{A}$ 时：
+
+$$
+L\_{\text{json}}(\mathcal{A}) = \underbrace{2}*{\text{\[]}} + \sum*{i=1}^{n} L\_{\text{json}}(v\_i) + \underbrace{(n-1)}\_{\text{逗号}}
+$$
+
+## TOON 字节长度函数
+
+对于具有 $n$ 个键的扁平对象：
+
+$$
+L\_{\text{toon}}(\mathcal{O}) = \sum\_{i=1}^{n} (L\_{\text{str}}(k\_i) + \underbrace{1}*{:} + \underbrace{1}*{\text{空格}} + L\_{\text{toon}}(v\_i)) + \underbrace{(n-1)}\_{\text{换行符}}
+$$
+
+其中 $L\_{\text{str}}(k)$ 是键的长度（简单键不需要引号）：
+
+$$
+L\_{\text{str}}(k) = |k|\_{\text{utf8}}
+$$
+
+### TOON 基本类型值
+
+当 $v\_i$ 是基本数据类型 $\omega$ 时：
+
+| 类型 | 公式 |
+|------|---------|
+| 字符串（普通） | $L\_{\text{str}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
+| 字符串（看起来像数字/布尔值） | $L\_{\text{str}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}} + 2$ |
+| 数字 | $L\_{\text{num}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
+| 布尔值 | $L\_{\text{bool}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
+| Null | $L\_{\text{null}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
+
+### TOON 简单数组
+
+此处 $L\_{\text{toon}}(\mathcal{A})$ 指整个字段行 `key[N]: ...` 的长度，而不只是数组值本身。
+
+当 $v\_i$ 是简单数组 $\mathcal{A}$ 时：
+
+$$
+L\_{\text{toon}}(\mathcal{A}) = L\_{\text{str}}(k\_i) + \underbrace{1}*{\text{\[}} + L*{\text{num}}(n) + \underbrace{1}*{\text{]}} + \underbrace{1}*{:} + \underbrace{1}*{\text{空格}} + \sum*{i=1}^{n} L\_{\text{toon}}(v\_i) + \underbrace{(n-1)}\_{\text{逗号}}
+$$
+
+### TOON 表格化数组
+
+当 $v\_i$ 是具有 $m$ 个字段的对象数组时：
+
+$$
+\begin{split}
+L\_{\text{toon}}(\mathcal{A}') = L\_{\text{str}}(k\_i) + \underbrace{1}*{\text{\[}} + L*{\text{num}}(n) + \underbrace{1}*{\text{]}} + \underbrace{1}*{{} + \\
+\sum\_{i=1}^{m} L\_{\text{str}}(k\_i) + \underbrace{(m-1)}*{\text{逗号}} + \underbrace{1}*{}} + \underbrace{1}*{:} + \\
+\underbrace{2n}*{\text{缩进}} + \sum\_{i=1}^{n}\sum\_{j=1}^{m} L\_{\text{toon}}(v\_{ij}) + \underbrace{(m-1)n}*{\text{逗号}} + \underbrace{n}*{\text{换行符}}
+\end{split}
+$$
+
+*说明：项 $2n$ 假定缩进大小为 2 空格。*
+
+## 按结构类型的效率分析
+
+以下各小节分别分析一类特定的数据结构。每一节都会给出相应公式，并附简短示例。直观来看，在以下情况下 TOON 通常更省字节：
+
+* 避免重复键名（表格化数组），
+* 避免为键和大多数值加引号，
+* 以及用缩进代替大括号，
+
+但在另一些情况下，TOON 会处于劣势。例如数组的数组需要让每个元素承担固定开销，高度嵌套的配置则会产生较深的缩进。
+
+### 简单对象
+
+带有字符串基本类型值的扁平对象，是 TOON 最占优的场景。JSON 需要大括号，键和字符串也都要加引号。TOON 在根级别不需要大括号，简单键也无需加引号，每个字段单独成行。
+
+对于仅含字符串基本类型值的对象：
+
+$$
+\Delta\_{\text{obj}} = 2 + n + \sum\_{i=1}^{n}(L\_{\text{json}}(v\_i)) - \sum\_{i=1}^{n}(L\_{\text{toon}}(v\_i))
+$$
+
+如果所有值都是可在 TOON 中不加引号的字符串，可简化为：
+
+$$
+f(n) = 2 + 3n
+$$
+
+**示例：** 对于 1,000,000 个对象，TOON 节省 **3,000,002 字节 ≈ 2.86 MB**。
+
+#### 示例验证
+
+::: code-group
+
+```json [JSON (21 字节)]
+{ "id": 1, "name": "Ada" }
+```
+
+```yaml [TOON (15 字节)]
+id: 1
+name: Ada
+```
+
+:::
+
+$$
+\Delta\_{\text{obj}} = 2 + \underbrace{2}*{n} + \underbrace{6}*{\sum L\_{\text{json}}(v\_i)} - \underbrace{4}*{\sum L*{\text{toon}}(v\_i)} = 6
+$$
+
+### 嵌套对象
+
+添加一个包装对象，相当于增加一层嵌套。JSON 会多出一组大括号，TOON 则会增加缩进和换行。对于带有基本类型值的单层嵌套，TOON 仍然占优，但净优势会变小。
+
+对于带有基本类型值的单层嵌套：
+
+$$
+f(n) = 5 + n
+$$
+
+**示例：** 对于 1,000,000 个嵌套对象（深度为 1），TOON 节省 **1,000,005 字节 ≈ 0.95 MB**。
+
+::: warning 注意事项
+该公式仅适用于单层嵌套。TOON 中每增加一层嵌套，每个嵌套行都会增加 2 个空格的缩进。嵌套足够深时，紧凑 JSON 反而可能比 TOON 更省字节。数据无法整理为表格化结构时，这一点尤其明显（参见 [何时不使用 TOON](/zh/guide/getting-started#何时不使用-toon)，以及 [基准测试](/zh/guide/benchmarks) 中的“深度嵌套配置”数据集）。
+:::
+
+#### 示例验证
+
+::: code-group
+
+```json [JSON (30 字节)]
+{ "user": { "id": 1, "name": "Ada" } }
+```
+
+```yaml [TOON (25 字节)]
+user:
+  id: 1
+  name: Ada
+```
+
+:::
+
+$$
+\Delta\_{\text{nested}} = 5
+$$
+
+### 基本类型数组
+
+对于字符串基本类型数组，JSON 写作 `["foo","bar","baz"]`。每个字符串都要加引号，数组本身用 `[]` 表示。TOON 写作 `key[N]: foo,bar,baz`。它只需承担一次长度标记的开销，并省略大部分引号。
+
+对于由 $n$ 个字符串基本类型组成的数组：
+
+$$
+\Delta\_{\text{arr}} = 3 - L\_{\text{num}}(n) + \sum\_{i=1}^{n}(L\_{\text{json}}(v\_i)) - \sum\_{i=1}^{n}(L\_{\text{toon}}(v\_i))
+$$
+
+如果字符串值可在 TOON 中不加引号，可简化为：
+
+$$
+f(n) = 2 + 2n - \lfloor \log\_{10}(|n|) \rfloor
+$$
+
+**示例：** 对于 1,000,000 个元素，TOON 节省 **1,999,996 字节 ≈ 1.91 MB**。
+
+#### 示例验证
+
+::: code-group
+
+```json [JSON (28 字节)]
+{ "tags": ["foo", "bar", "baz"] }
+```
+
+```yaml [TOON (20 字节)]
+tags[3]: foo,bar,baz
+```
+
+:::
+
+$$
+\Delta\_{\text{arr}} = 3 - \underbrace{1}*{L*{\text{num}}(3)} + \underbrace{15}*{\sum L*{\text{json}}} - \underbrace{9}*{\sum L*{\text{toon}}} = 8
+$$
+
+### 根数组
+
+在根级别，JSON 写作 `["x","y","z"]`，TOON 写作 `[3]: x,y,z`。这里不存在对象键开销。TOON 的优势主要来自两点：安全字符串无需加引号，以及用 `[N]:` 代替 `[]`。
+
+对于由 $n$ 个字符串基本类型组成的根数组：
+
+$$
+f(n) = -3 + 2n - \lfloor \log\_{10}(|n|) \rfloor
+$$
+
+**示例：** 对于 1,000,000 个元素，TOON 节省 **1,999,991 字节 ≈ 1.91 MB**。
+
+#### 示例验证
+
+::: code-group
+
+```json [JSON (13 字节)]
+["x", "y", "z"]
+```
+
+```yaml [TOON (10 字节)]
+[3]: x,y,z
+```
+
+:::
+
+$$
+\Delta\_{\text{root}} = \underbrace{9}*{\sum L*{\text{json}}} - 2 - \underbrace{1}*{L*{\text{num}}(3)} - \underbrace{3}*{\sum L*{\text{toon}}} = 3
+$$
+
+### 表格化数组
+
+结构一致的对象数组是 TOON 最适合的场景。JSON 会在每一行重复所有键名。TOON 只声明一次长度和列名（`key[N]{id,qty,...}:`），随后直接按行输出裸值。
+
+对于具有 $n$ 行、$m$ 个字段的对象数组，假定字段值为数字且 $|k| = 3$：
+
+$$
+f(n) = 1 + nm(3 + |k|) - m(1 + |k|) - \lfloor \log\_{10}(|n|) \rfloor
+$$
+
+**示例：** 对于 1,000,000 行、2 个字段、字段名长度为 3 个字符的情况，TOON 节省 **11,999,987 字节 ≈ 11.44 MB**。
+
+这正体现了 TOON 的设计优势：字段只声明一次，数据按行输出。因此，节省的字节数会随行数和字段数同步线性增长。
+
+#### 示例验证
+
+::: code-group
+
+```json [JSON (45 字节)]
+{ "items": [{ "id": 1, "qty": 5 }, { "id": 2, "qty": 3 }] }
+```
+
+```yaml [TOON (29 字节)]
+items[2]{id,qty}:
+  1,5
+  2,3
+```
+
+:::
+
+$$
+\Delta\_{\text{tab}} = 2 + \underbrace{4}*{nm} - \underbrace{2}*{m} + \underbrace{22}*{\Sigma L*{\text{json}}} - \underbrace{1}*{L*{\text{num}}(n)} - \underbrace{5}*{\Sigma L*{\text{toon}}(k)} - \underbrace{4}*{\Sigma L*{\text{toon}}(v)} = 16
+$$
+
+### 数组的数组
+
+由基本类型数组组成的数组，是 TOON 在结构上处于劣势的场景。每个内部数组都会变成一个带有独立首部的列表项。因此，TOON 的每个内部数组都要承担固定开销（`"- "` 加上 `"[m]: "`）。JSON 则只需使用逗号分隔。
+
+::: info 实践提示
+按本文的字节级模型估算，对于由基本类型数组组成的数组，JSON 比 TOON 更省字节。TOON 的每个内部数组除了长度标记本身的开销外，还会额外多出约 6 字节（`"- "` 占 2 字节，`"[m]: "` 占 4 字节）。
+:::
+
+对于具有 $n$ 个外层元素、$m$ 个内层元素的数组的数组：
+
+$$
+\begin{split}
+\Delta\_{\text{arrarr}} = 2 - 6n - \sum\_{i=1}^{n}\sum\_{j=1}^{m} L\_{\text{num}}(m) + \\
+\sum\_{i=1}^{n}\sum\_{j=1}^{m} L\_{\text{json}}(v\_{ij}) - \sum\_{i=1}^{n}\sum\_{j=1}^{m} L\_{\text{toon}}(v\_{ij})
+\end{split}
+$$
+
+对于字符串基本类型且 $m = 2$：
+
+$$
+f(n) = 2 - 6n - \sum\_{i=1}^{n}\sum\_{j=1}^{m} (\lfloor \log\_{10}(|m|) \rfloor + 1) + 2nm
+$$
+
+**示例：** 对于 1,000,000 个数组且 $m = 2$ 的情况，在该模型下 TOON 相比 JSON **多占用 2,999,998 字节 ≈ 2.86 MB**。
+
+#### 示例验证
+
+::: code-group
+
+```json [JSON (23 字节)]
+{ "pairs": [[1, 2], [3, 4]] }
+```
+
+```yaml [TOON (35 字节)]
+pairs[2]:
+  - [2]: 1,2
+  - [2]: 3,4
+```
+
+:::
+
+$$
+\Delta\_{\text{arrarr}} = 2 - \underbrace{12}*{6n} - \underbrace{2}*{\sum L\_{\text{num}}(m)} + \underbrace{4}*{\sum L*{\text{json}}} - \underbrace{4}*{\sum L*{\text{toon}}} = -12
+$$
+
+### 看起来像字面量的字符串
+
+看起来像数字或布尔值的字符串（例如 `"123"`、`"true"`）在 JSON 和 TOON 中都必须加引号。这会略微削弱 TOON 的优势，因为这些值已经无法再省去引号。
+
+对于包含此类字符串的对象：
+
+$$
+\Delta\_{\text{strlit}} = 2 + n
+$$
+
+**示例：** 对于 1,000,000 个对象，TOON 节省 **2,000,002 字节 ≈ 1.91 MB**。
+
+#### 示例验证
+
+::: code-group
+
+```json [JSON (34 字节)]
+{ "version": "123", "enabled": "true" }
+```
+
+```yaml [TOON (30 字节)]
+version: "123"
+enabled: "true"
+```
+
+:::
+
+$$
+\Delta\_{\text{str}} = 2 + \underbrace{2}\_{n} = 4
+$$
+
+### 空结构
+
+即便规模极小，空容器也能体现结构性差异。
+
+**空对象：**
+
+$$
+\Delta\_{\text{EmptyObject}} = 2
+$$
+
+JSON 需要 `{}`（2 字节），而 TOON 中完全为空的根对象可表示为空文档（0 字节）。
+
+**空数组（字段）：**
+
+$$
+\Delta\_{\text{EmptyArray}} = 3
+$$
+
+对于名为 `key` 的字段，JSON 以紧凑形式使用 `{"key":[]}`，而 TOON 使用：
+
+```yaml
+key: []
+```
+
+在该模型下，TOON 固定少用 3 字节。出于向后兼容考虑，旧式 `key[0]:` 形式仍可解码。
+
+## 汇总表
+
+下表汇总了各类结构的效率公式，也列出了在本文建模假设下哪一方更有优势。
+
+| 结构 | 效率公式 | TOON 是否占优？ |
+|-----------|-------------------|-----------------|
+| 简单对象 | $f(n) = 2 + 3n$ | ✅ 是 |
+| 嵌套对象（1 层） | $f(n) = 5 + n$ | ✅ 是（随深度增加而收窄） |
+| 基本类型数组 | $f(n) = 2 + 2n - \lfloor \log\_{10}(n) \rfloor$ | ✅ 是 |
+| 根数组 | $f(n) = -3 + 2n - \lfloor \log\_{10}(n) \rfloor$ | ✅ 是 |
+| 表格化数组 | $f(n) = 1 + nm(3+\lvert k\rvert) - m(1+\lvert k\rvert) - \lfloor \log\_{10}(n) \rfloor$ | ✅ **最佳场景** |
+| 数组的数组 | $f(n) = 2 - 6n + 2nm - \text{overhead}$ | ❌ JSON 在此更优 |
+| 形似字面量的字符串 | $f(n) = 2 + n$ | ✅ 是（优势较小） |
+| 空结构 | $\Delta = 2$ 或 $3$ | ✅ 是 |
+
+简而言之：
+
+* 对于扁平对象，TOON 的收益与字段数量成**线性关系**。
+* 对于数组，收益随元素数量**线性增长**。
+* 对于表格化数组，收益同时随行数和字段数**线性增长**。
+* 数组的数组是 JSON 更省字节的主要结构性场景。
+* 深度嵌套和大量引号会在实际数据中削弱甚至逆转这些优势。
+
+## 结论
+
+这个简化的理论模型印证了 TOON 的设计目标。从结构层面看，在许多常见数据模式中，TOON 可以通过以下方式降低相对于紧凑 JSON 的开销：
+
+* 避免在表格化数组中重复键名，
+* 省略许多键和值的引号，
+* 并在嵌套较浅时用缩进代替大括号。
+
+对于本文考察的结构类型，在上述假设下，除数组的数组外，TOON 的结构性开销都低于紧凑 JSON。UTF-8 字节长度可以作为 token 数的合理一阶近似。因此，这些结构性节省通常会转化为相应模式下更低的 token 数。
+
+同时，这个模型有意做了简化。真实数据集还会受到其他因素影响，例如更深或不规则的嵌套、大量需要加引号的字符串、JSON 中的指数记法，以及分词器的特殊行为。这些因素都可能削弱甚至逆转 TOON 的收益。
+
+[基准测试](/zh/guide/benchmarks) 和 [何时不使用 TOON](/zh/guide/getting-started#何时不使用-toon) 表明，对于深度嵌套或表格化程度较低的数据，紧凑 JSON 可能更高效。请将本页作为理解 TOON *为何* 如此表现的直觉参考，而不是普遍适用的保证。
+
+## 相关资源
+
+* [基准测试](/zh/guide/benchmarks) —— 跨格式的实证 token 数与准确率对比
+* [规范](/zh/reference/spec) —— 正式的 TOON 规范
+
+## 参考文献
+
+本分析基于以下内容：
+
+* **原始研究**：[TOON vs. JSON: A Mathematical Evaluation of Byte Efficiency in Structured Data](https://www.researchgate.net/publication/397903673_TOON_vs_JSON_A_Mathematical_Evaluation_of_Byte_Efficiency_in_Structured_Data)
+* **TOON 规范**：[toon-format/spec](https://github.com/toon-format/spec)
+* **JSON 规范**：[RFC 8259](https://datatracker.ietf.org/doc/html/rfc8259)、[ECMA-404](https://www.ecma-international.org/publications-and-standards/standards/ecma-404/)
+
+***
+
+本页由 Mateo Lafalce（[@mateolafalce](https://github.com/mateolafalce)）贡献。
+
+*对该形式化分析有疑问，或发现了错误？欢迎在 [GitHub](https://github.com/toon-format/spec) 上提交 issue，或为本分析贡献改进内容。*
+
+---
+
+---
+url: /en/reference/api.md
+description: >-
+  TypeScript and JavaScript encode and decode functions, options, error types,
+  and streaming decoders for @toon-format/toon.
+---
+
+# API Reference
+
+TypeScript/JavaScript API documentation for the `@toon-format/toon` package. For format rules, see the [Format Overview](/guide/format-overview) or the [Specification](/reference/spec). For other languages, see [Implementations](/ecosystem/implementations).
+
+## Installation
+
+::: code-group
+
+```bash [npm]
+npm install @toon-format/toon
+```
+
+```bash [pnpm]
+pnpm add @toon-format/toon
+```
+
+```bash [yarn]
+yarn add @toon-format/toon
+```
+
+:::
+
+## Encoding Functions
+
+### `encode(input, options?)`
+
+Converts any JSON-serializable value to TOON format.
+
+```ts
+import { encode } from '@toon-format/toon'
+
+const toon = encode(data, {
+  indent: 2,
+  delimiter: ',',
+  keyFolding: 'off',
+  flattenDepth: Infinity
+})
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `input` | `unknown` | Any JSON-serializable value (object, array, primitive, or nested structure) |
+| `options` | `EncodeOptions?` | Optional encoding options (see [Configuration Reference](#configuration-reference)) |
+
+#### Return Value
+
+Returns a TOON-formatted string with no trailing newline or spaces.
+
+#### Type Normalization
+
+Non-JSON-serializable values are normalized before encoding:
+
+| Input | Output |
+|-------|--------|
+| `Object` with `toJSON()` method | Result of calling `toJSON()`, recursively normalized |
+| Finite number in `[1e-6, 1e21)` (or zero) | Canonical decimal (e.g., `1e6` → `1000000`, `-0` → `0`) |
+| Finite number outside that range | Exponent form permitted (e.g., `1e-7`, `1e+21`) |
+| `NaN`, `Infinity`, `-Infinity` | `null` |
+| `BigInt` (within safe range) | Number |
+| `BigInt` (out of range) | Quoted decimal string (e.g., `"9007199254740993"`) |
+| `Date` | ISO string in quotes (e.g., `"2025-01-01T00:00:00.000Z"`) |
+| `Set` | Array of normalized values |
+| `Map` | Object with `String(key)` keys |
+| `undefined`, `function`, `symbol` | `null` |
+
+::: info
+TOON itself doesn't specify how `Date` should be encoded – the spec leaves this to implementations. This library emits an ISO 8601 string in quotes; other implementations may choose differently.
+:::
+
+#### Example
+
+```ts
+import { encode } from '@toon-format/toon'
+
+const items = [
+  { sku: 'A1', qty: 2, price: 9.99 },
+  { sku: 'B2', qty: 1, price: 14.5 }
+]
+
+console.log(encode({ items }))
+```
+
+**Output:**
+
+```yaml
+items[2]{sku,qty,price}:
+  A1,2,9.99
+  B2,1,14.5
+```
+
+### `encodeLines(input, options?)`
+
+**Preferred method for streaming TOON output.** Converts any JSON-serializable value to TOON format as a sequence of lines, without building the full string in memory. Suitable for streaming large outputs to files, HTTP responses, or process stdout.
+
+```ts
+import { encodeLines } from '@toon-format/toon'
+
+// Stream to stdout (Node.js)
+for (const line of encodeLines(data)) {
+  process.stdout.write(`${line}\n`)
+}
+
+// Write to file line-by-line
+const lines = encodeLines(data, { indent: 2, delimiter: '\t' })
+for (const line of lines) {
+  await writeToStream(`${line}\n`)
+}
+
+// Collect to array
+const lineArray = Array.from(encodeLines(data))
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `input` | `unknown` | Any JSON-serializable value (object, array, primitive, or nested structure) |
+| `options` | `EncodeOptions?` | Optional encoding options (see [Configuration Reference](#configuration-reference)) |
+
+#### Return Value
+
+Returns an `Iterable<string>` that yields TOON lines one at a time. **Each yielded string is a single line without a trailing newline character** – you must add `\n` when writing to streams or stdout.
+
+::: info Relationship to `encode()`
+`encode(value, options)` is equivalent to:
+
+```ts
+Array.from(encodeLines(value, options)).join('\n')
+```
+
+:::
+
+#### Example
+
+```ts
+import { createWriteStream } from 'node:fs'
+import { encodeLines } from '@toon-format/toon'
+
+const data = {
+  items: Array.from({ length: 100000 }, (_, i) => ({
+    id: i,
+    name: `Item ${i}`,
+    value: Math.random()
+  }))
+}
+
+// Stream large dataset to file
+const stream = createWriteStream('output.toon')
+for (const line of encodeLines(data, { delimiter: '\t' })) {
+  stream.write(`${line}\n`)
+}
+stream.end()
+```
+
+### Replacer Function
+
+The `replacer` option allows you to transform or filter values during encoding. It works similarly to `JSON.stringify`'s replacer parameter, but with path tracking for more precise control.
+
+#### Type Signature
+
+```typescript
+type EncodeReplacer = (
+  key: string,
+  value: JsonValue,
+  path: readonly (string | number)[]
+) => unknown
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `key` | `string` | Property name, array index (as string), or empty string for root |
+| `value` | `JsonValue` | The normalized value at this location |
+| `path` | `readonly (string \| number)[]` | Path from root to current value |
+
+#### Return Value
+
+* Return the value unchanged to keep it
+* Return a different value to replace it (will be normalized)
+* Return `undefined` to omit properties/array elements
+* For root value, `undefined` means "no change" (root cannot be omitted)
+
+#### Examples
+
+**Filtering sensitive data:**
+
+```typescript
+import { encode } from '@toon-format/toon'
+
+const data = {
+  user: { name: 'Alice', password: 'secret123', email: 'alice@example.com' }
+}
+
+function replacer(key, value) {
+  if (key === 'password')
+    return undefined
+  return value
+}
+
+console.log(encode(data, { replacer }))
+```
+
+**Output:**
+
+```yaml
+user:
+  name: Alice
+  email: alice@example.com
+```
+
+**Transforming values:**
+
+```typescript
+const data = { user: 'alice', role: 'admin' }
+
+function replacer(key, value) {
+  if (typeof value === 'string')
+    return value.toUpperCase()
+  return value
+}
+
+console.log(encode(data, { replacer }))
+```
+
+**Output:**
+
+```yaml
+user: ALICE
+role: ADMIN
+```
+
+**Path-based transformations:**
+
+```typescript
+const data = {
+  metadata: { created: '2025-01-01' },
+  user: { created: '2025-01-02' }
+}
+
+function replacer(key, value, path) {
+  // Add timezone info only to top-level metadata
+  if (path.length === 1 && path[0] === 'metadata' && key === 'created') {
+    return `${value}T00:00:00Z`
+  }
+  return value
+}
+
+console.log(encode(data, { replacer }))
+```
+
+**Output:**
+
+```yaml
+metadata:
+  created: "2025-01-01T00:00:00Z"
+user:
+  created: 2025-01-02
+```
+
+::: info Replacer Execution Order
+The replacer is called in a depth-first manner:
+
+1. Root value first (key = `''`, path = `[]`)
+2. Then each property/element (with proper key and path)
+3. Values are re-normalized after replacement
+4. Children are processed after parent transformation
+   :::
+
+::: warning Array Indices as Strings
+Following `JSON.stringify` behavior, array indices are passed as strings (`'0'`, `'1'`, `'2'`, etc.) to the replacer, not as numbers.
+:::
+
+## Decoding Functions
+
+### `decode(input, options?)`
+
+Converts a TOON-formatted string back to JavaScript values.
+
+```ts
+import { decode } from '@toon-format/toon'
+
+const data = decode(toon, {
+  indent: 2,
+  strict: true,
+  expandPaths: 'off'
+})
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `input` | `string` | A TOON-formatted string to parse |
+| `options` | `DecodeOptions?` | Optional decoding options (see [Configuration Reference](#configuration-reference)) |
+
+#### Return Value
+
+Returns a JavaScript value (object, array, or primitive) representing the parsed TOON data.
+
+#### Example
+
+```ts
+import { decode } from '@toon-format/toon'
+
+const toon = `
+items[2]{sku,qty,price}:
+  A1,2,9.99
+  B2,1,14.5
+`
+
+const data = decode(toon)
+console.log(data)
+```
+
+**Output:**
+
+```json
+{
+  "items": [
+    { "sku": "A1", "qty": 2, "price": 9.99 },
+    { "sku": "B2", "qty": 1, "price": 14.5 }
+  ]
+}
+```
+
+### `decodeFromLines(lines, options?)`
+
+Decodes TOON format from pre-split lines into a JavaScript value. This is a streaming-friendly wrapper around the event-based decoder that builds the full value in memory.
+
+Useful when you already have lines as an array or iterable (e.g., from file streams, readline interfaces, or network responses) and want the standard decode behavior with path expansion support.
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `lines` | `Iterable<string>` | Iterable of TOON lines (without trailing newlines) |
+| `options` | `DecodeOptions?` | Optional decoding configuration (see [Configuration Reference](#configuration-reference)) |
+
+#### Return Value
+
+Returns a `JsonValue` (the parsed JavaScript value: object, array, or primitive).
+
+#### Example
+
+**Basic usage with arrays:**
+
+```ts
+import { decodeFromLines } from '@toon-format/toon'
+
+const lines = ['name: Alice', 'age: 30']
+const value = decodeFromLines(lines)
+// { name: 'Alice', age: 30 }
+```
+
+**Streaming from Node.js readline:**
+
+```ts
+import { createReadStream } from 'node:fs'
+import { createInterface } from 'node:readline'
+import { decodeFromLines } from '@toon-format/toon'
+
+const rl = createInterface({
+  input: createReadStream('data.toon'),
+  crlfDelay: Infinity,
+})
+
+const value = decodeFromLines(rl)
+console.log(value)
+```
+
+**With path expansion:**
+
+```ts
+const lines = ['user.name: Alice', 'user.age: 30']
+const value = decodeFromLines(lines, { expandPaths: 'safe' })
+// { user: { name: 'Alice', age: 30 } }
+```
+
+### Choosing the Right Decoder
+
+| Function | Input | Output | Async | Path Expansion | Use When |
+|----------|-------|--------|-------|----------------|----------|
+| `decode()` | String | Value | No | Yes | You have a complete TOON string |
+| `decodeFromLines()` | Lines | Value | No | Yes | You have lines and want the full value |
+| `decodeStreamSync()` | Lines | Events | No | No | You need event-by-event processing (sync) |
+| `decodeStream()` | Lines | Events | Yes | No | You need event-by-event processing (async) |
+
+::: info Key Differences
+
+* **Value vs. Events**: Functions ending in `Stream` yield events without building the full value in memory.
+* **Path expansion**: Only `decode()` and `decodeFromLines()` support `expandPaths: 'safe'`.
+* **Async support**: Only `decodeStream()` accepts async iterables (useful for file/network streams).
+  :::
+
+## Streaming Decoders
+
+### `decodeStreamSync(lines, options?)`
+
+Synchronously decodes TOON lines into a stream of JSON events. This function yields structured events that represent the JSON data model without building the full value tree.
+
+Useful for streaming processing, custom transformations, or memory-efficient parsing of large datasets where you don't need the full value in memory.
+
+::: tip Event Streaming
+This is a low-level API that returns individual parse events. For most use cases, [`decodeFromLines()`](#decodefromlines-lines-options) or [`decode()`](#decode-input-options) are more convenient.
+
+Path expansion (`expandPaths: 'safe'`) is **not supported** in streaming mode since it requires the full value tree.
+:::
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `lines` | `Iterable<string>` | Iterable of TOON lines (without trailing newlines) |
+| `options` | `DecodeStreamOptions?` | Optional streaming decoding configuration (see [Configuration Reference](#configuration-reference)) |
+
+#### Return Value
+
+Returns an `Iterable<JsonStreamEvent>` that yields structured events (see [TypeScript Types](#typescript-types) for event structure).
+
+#### Example
+
+**Basic event streaming:**
+
+```ts
+import { decodeStreamSync } from '@toon-format/toon'
+
+const lines = ['name: Alice', 'age: 30']
+
+for (const event of decodeStreamSync(lines)) {
+  console.log(event)
+}
+
+// Output:
+// { type: 'startObject' }
+// { type: 'key', key: 'name' }
+// { type: 'primitive', value: 'Alice' }
+// { type: 'key', key: 'age' }
+// { type: 'primitive', value: 30 }
+// { type: 'endObject' }
+```
+
+**Custom processing:**
+
+```ts
+import { decodeStreamSync } from '@toon-format/toon'
+
+const lines = ['users[2]{id,name}:', '  1,Alice', '  2,Bob']
+let userCount = 0
+
+for (const event of decodeStreamSync(lines)) {
+  if (event.type === 'endObject' && userCount < 2) {
+    userCount++
+    console.log(`Processed user ${userCount}`)
+  }
+}
+```
+
+### `decodeStream(source, options?)`
+
+Asynchronously decodes TOON lines into a stream of JSON events. This is the async version of [`decodeStreamSync()`](#decodestreamsync-lines-options), supporting both synchronous and asynchronous iterables.
+
+Useful for processing file streams, network responses, or other async sources where you want to handle data incrementally as it arrives.
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `source` | `AsyncIterable<string>` | `Iterable<string>` | Async or sync iterable of TOON lines (without trailing newlines) |
+| `options` | `DecodeStreamOptions?` | Optional streaming decoding configuration (see [Configuration Reference](#configuration-reference)) |
+
+#### Return Value
+
+Returns an `AsyncIterable<JsonStreamEvent>` that yields structured events asynchronously (see [TypeScript Types](#typescript-types) for event structure).
+
+#### Example
+
+**Streaming from file:**
+
+```ts
+import { createReadStream } from 'node:fs'
+import { createInterface } from 'node:readline'
+import { decodeStream } from '@toon-format/toon'
+
+const fileStream = createReadStream('data.toon', 'utf-8')
+const rl = createInterface({ input: fileStream, crlfDelay: Infinity })
+
+for await (const event of decodeStream(rl)) {
+  console.log(event)
+  // Process events as they arrive
+}
+```
+
+## Error Handling
+
+Decoding throws a `ToonDecodeError` when input cannot be parsed. The class extends `SyntaxError`, so existing `error instanceof SyntaxError` checks keep working without code changes.
+
+### `ToonDecodeError`
+
+```ts
+import { ToonDecodeError } from '@toon-format/toon'
+```
+
+#### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `'ToonDecodeError'` | Discriminator – `error.name === 'ToonDecodeError'` |
+| `message` | `string` | Human-readable message; prefixed with `Line N: ` when a line is known |
+| `line` | `number?` | 1-based line number where the error was detected |
+| `source` | `string?` | Raw source line (including its leading whitespace) |
+| `cause` | `unknown?` | The original error when the decoder enriched a lower-level parser failure |
+
+The `line` and `source` fields are populated for every error that has line context – essentially every parse error during normal decoding. The `cause` chain points back to the underlying `SyntaxError` or `TypeError` thrown by the token-level parser, so debuggers and verbose loggers can show the original frame.
+
+#### Example
+
+```ts
+import { decode, ToonDecodeError } from '@toon-format/toon'
+
+try {
+  decode('a:\n\tb: 1')
+}
+catch (error) {
+  if (error instanceof ToonDecodeError) {
+    console.error(`Line ${error.line}:`, error.source)
+    console.error(error.message)
+    // Line 2: 	b: 1
+    // Line 2: Tabs are not allowed in indentation in strict mode
+  }
+  else {
+    throw error
+  }
+}
+```
+
+::: info Backwards Compatibility
+`ToonDecodeError` extends `SyntaxError`. Code written against earlier versions that catches `SyntaxError` continues to match these errors. The class adds structured fields without removing anything.
+:::
+
+## Configuration Reference
+
+### `EncodeOptions`
+
+Configuration for [`encode()`](#encode-input-options) and [`encodeLines()`](#encodelines-input-options):
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `indent` | `number` | `2` | Number of spaces per indentation level |
+| `delimiter` | `','` | `'\t'` | `'\|'` | `','` | Delimiter for array values and tabular rows |
+| `keyFolding` | `'off'` | `'safe'` | `'off'` | Enable key folding to collapse single-key wrapper chains into dotted paths |
+| `flattenDepth` | `number` | `Infinity` | Maximum number of segments to fold when `keyFolding` is enabled (values 0-1 have no practical effect) |
+| `replacer` | `EncodeReplacer` | `undefined` | Optional hook to transform or omit values before encoding (see [Replacer Function](#replacer-function)) |
+
+**Delimiter options:**
+
+::: code-group
+
+```ts [Comma (default)]
+encode(data, { delimiter: ',' })
+```
+
+```ts [Tab]
+encode(data, { delimiter: '\t' })
+```
+
+```ts [Pipe]
+encode(data, { delimiter: '|' })
+```
+
+:::
+
+See [Delimiter Strategies](#delimiter-strategies) for guidance on choosing delimiters.
+
+### `DecodeOptions`
+
+Configuration for [`decode()`](#decode-input-options) and [`decodeFromLines()`](#decodefromlines-lines-options):
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `indent` | `number` | `2` | Expected number of spaces per indentation level |
+| `strict` | `boolean` | `true` | Enable strict validation (array counts, indentation, delimiter consistency) |
+| `expandPaths` | `'off'` | `'safe'` | `'off'` | Enable path expansion to reconstruct dotted keys into nested objects (pairs with `keyFolding: 'safe'`) |
+
+By default (`strict: true`), the decoder validates input strictly:
+
+* **Invalid escape sequences**: Throws on `\x`, unterminated strings, lone-surrogate `\uXXXX`
+* **Syntax errors**: Throws on missing colons, malformed headers
+* **Array length mismatches**: Throws when declared length doesn't match actual count
+* **Header delimiter mismatch**: Throws when the bracket-declared delimiter differs from the field-list delimiter (§14.2)
+* **Indentation errors**: Throws when leading spaces aren't exact multiples of `indent`
+* **Header structure**: Throws on leading-zero or non-integer array lengths and on intervening content between bracket/fields/colon
+* **Duplicate sibling keys**: Throws when an object has two children with the same key (§14.4)
+* **Path-expansion conflicts**: When `expandPaths: 'safe'` is set, throws on overlapping dotted paths that would collide
+
+All decode errors are thrown as [`ToonDecodeError`](#error-handling) instances with structured `line` and `source` fields.
+
+Set `strict: false` to skip these checks. Duplicate sibling keys and path-expansion conflicts then resolve with last-write-wins in document order.
+
+See [Key Folding & Path Expansion](#key-folding-path-expansion) for more details on path expansion behavior and conflict resolution.
+
+### `DecodeStreamOptions`
+
+Configuration for [`decodeStreamSync()`](#decodestreamsync-lines-options) and [`decodeStream()`](#decodestream-source-options):
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `indent` | `number` | `2` | Expected number of spaces per indentation level |
+| `strict` | `boolean` | `true` | Enable strict validation (array counts, indentation, delimiter consistency) |
+
+::: warning Path Expansion Not Supported
+Path expansion requires building the full value tree, which is incompatible with event streaming. Use [`decodeFromLines()`](#decodefromlines-lines-options) if you need path expansion.
+:::
+
+## TypeScript Types
+
+### `JsonStreamEvent`
+
+Events emitted by [`decodeStreamSync()`](#decodestreamsync-lines-options) and [`decodeStream()`](#decodestream-source-options):
+
+```ts
+type JsonStreamEvent
+  = | { type: 'startObject' }
+    | { type: 'endObject' }
+    | { type: 'startArray', length: number }
+    | { type: 'endArray' }
+    | { type: 'key', key: string, wasQuoted?: boolean }
+    | { type: 'primitive', value: JsonPrimitive }
+```
+
+### Delimiters
+
+```ts
+import { DEFAULT_DELIMITER, DELIMITERS } from '@toon-format/toon'
+
+DEFAULT_DELIMITER // ','
+DELIMITERS // { comma: ',', tab: '\t', pipe: '|' }
+```
+
+| Export | Description |
+|--------|-------------|
+| `DEFAULT_DELIMITER` | The default delimiter character (`,`) used when none is specified |
+| `DELIMITERS` | Frozen record mapping delimiter names to their characters |
+| `Delimiter` | Type union of valid delimiter characters: `',' \| '\t' \| '\|'` |
+| `DelimiterKey` | Type union of delimiter names: `'comma' \| 'tab' \| 'pipe'` |
+
+### Option Types
+
+| Export | Description |
+|--------|-------------|
+| `EncodeOptions` | Options accepted by [`encode()`](#encode-input-options) and [`encodeLines()`](#encodelines-input-options) |
+| `DecodeOptions` | Options accepted by [`decode()`](#decode-input-options) and [`decodeFromLines()`](#decodefromlines-lines-options) |
+| `DecodeStreamOptions` | Options accepted by [`decodeStreamSync()`](#decodestreamsync-lines-options) and [`decodeStream()`](#decodestream-source-options) |
+| `EncodeReplacer` | Signature of the [replacer function](#replacer-function) |
+| `ResolvedEncodeOptions` | `EncodeOptions` after defaults are applied (advanced) |
+| `ResolvedDecodeOptions` | `DecodeOptions` after defaults are applied (advanced) |
+
+## Guides & Examples
+
+### Round-Trip Compatibility
+
+TOON provides lossless round-trips after normalization:
+
+```ts
+import { decode, encode } from '@toon-format/toon'
+
+const original = {
+  users: [
+    { id: 1, name: 'Alice', role: 'admin' },
+    { id: 2, name: 'Bob', role: 'user' }
+  ]
+}
+
+const toon = encode(original)
+const restored = decode(toon)
+
+console.log(JSON.stringify(original) === JSON.stringify(restored))
+// true
+```
+
+**With Key Folding:**
+
+```ts
+import { decode, encode } from '@toon-format/toon'
+
+const original = { data: { metadata: { items: ['a', 'b'] } } }
+
+// Encode with folding
+const toon = encode(original, { keyFolding: 'safe' })
+// → "data.metadata.items[2]: a,b"
+
+// Decode with expansion
+const restored = decode(toon, { expandPaths: 'safe' })
+// → { data: { metadata: { items: ['a', 'b'] } } }
+
+console.log(JSON.stringify(original) === JSON.stringify(restored))
+// true
+```
+
+### Key Folding & Path Expansion
+
+**Key Folding** (`keyFolding: 'safe'`) collapses single-key wrapper chains during encoding:
+
+```ts
+import { encode } from '@toon-format/toon'
+
+const data = { data: { metadata: { items: ['a', 'b'] } } }
+
+// Without folding
+encode(data)
+// data:
+//   metadata:
+//     items[2]: a,b
+
+// With folding
+encode(data, { keyFolding: 'safe' })
+// data.metadata.items[2]: a,b
+```
+
+**Path Expansion** (`expandPaths: 'safe'`) reverses this during decoding:
+
+```ts
+import { decode } from '@toon-format/toon'
+
+const toon = 'data.metadata.items[2]: a,b'
+
+const data = decode(toon, { expandPaths: 'safe' })
+console.log(data)
+// { data: { metadata: { items: ['a', 'b'] } } }
+```
+
+**Expansion Conflict Resolution:**
+
+When multiple expanded keys construct overlapping paths, the decoder merges them recursively:
+
+* **Object + Object**: Deep merge recursively
+* **Object + Non-object** (array or primitive): Conflict
+  * With `strict: true` (default): Error
+  * With `strict: false`: Last-write-wins (LWW)
+
+Duplicate sibling keys (independent of `expandPaths`) follow the same policy: strict mode throws, lenient mode keeps the last value seen.
+
+### Delimiter Strategies
+
+Tab delimiters (`\t`) often tokenize more efficiently than commas. Tabs are single characters that rarely appear in natural text, which reduces the need for quote-escaping and leads to smaller token counts in large datasets.
+
+Example:
+
+```yaml
+items[2	]{sku	name	qty	price}:
+  A1	Widget	2	9.99
+  B2	Gadget	1	14.5
+```
+
+For maximum token savings on large tabular data, combine tab delimiters with key folding:
+
+```ts
+encode(data, { delimiter: '\t', keyFolding: 'safe' })
+```
+
+**Choosing a Delimiter:**
+
+* **Comma (`,`)**: Default, widely understood, good for simple tabular data.
+* **Tab (`\t`)**: Best for LLM token efficiency, excellent for large datasets.
+* **Pipe (`|`)**: Alternative when commas appear frequently in data.
 
 ---
 
@@ -4355,526 +7343,6 @@ This page was contributed by Mateo Lafalce ([@mateolafalce](https://github.com/m
 ---
 
 ---
-url: /zh/reference/efficiency-formalization.md
-description: TOON 与 JSON 在不同结构类型下的字节级开销模型，包含公式和实例推导。
----
-
-# TOON 与 JSON 对比：字节级效率模型
-
-本文从数学角度分析不同数据结构下 TOON 相对于 JSON 的字节效率。
-
-::: info 本文档的范围
-本页从理论角度比较 TOON 与 JSON 的字符级开销。如需查看实际基准测试和 token 计数，请参阅 [性能基准](/zh/guide/benchmarks)。本文属于**进阶参考资料，不具有规范效力**。它从数学角度解释 TOON 的设计思路，但不改变 TOON 规范本身。
-:::
-
-## 概述
-
-标准 JSON 会引入额外的结构性字符。这会增加 token 用量和推理成本。本页从字节级对 TOON 与 JSON 进行形式化比较，评估 TOON 能否通过减少结构性冗余获得可量化的效率提升。
-
-本文的比较基于几个前提：JSON 采用紧凑形式，TOON 采用规范格式。键和标点均为 ASCII。嵌套深度较浅或中等。大多数字符串无需加引号。在这些前提下，除“数组的数组”外，TOON 在本文分析的各类数据结构中，结构性开销都低于紧凑 JSON。
-
-### 关键发现
-
-* **表格化数组** 是 TOON 最适合的场景。行数和字段数越多，效率提升越明显，并且呈线性增长。
-* **简单对象和基本类型数组** 通常能稳定减少字节数，节省量与字段数或元素数成正比。
-* **嵌套对象** 可受益于较低的结构性开销。但缩进也会带来额外成本。嵌套越深，TOON 的优势越小。嵌套足够深时，紧凑 JSON 反而可能比 TOON 更省字节。
-* **数组的数组** 是本分析中唯一 TOON 效率低于 JSON 的结构。原因是 TOON 需要显式的列表标记和内部数组首部。
-
-## 方法论
-
-我们分别为 JSON 和 TOON 定义递归的字节长度函数：$L\_{\text{json}}$ 和 $L\_{\text{toon}}$。然后推导二者的字节差值：
-
-$$
-\Delta = L\_{\text{json}}(\Omega) - L\_{\text{toon}}(\Omega)
-$$
-
-其中 $\Omega$ 表示待比较的数据结构。若 $\Delta > 0$，则表示 TOON 在该结构上使用的字节数少于 JSON。
-
-::: info 范围与假设
-
-* **紧凑 JSON**：假定 JSON 是紧凑的（字符串之外没有空格或换行符）。字节数按此紧凑形式计算。
-* **规范 TOON**：假定 TOON 遵循规范格式。缩进为 2 个空格，`:` 后恰好一个空格，数组和字段列表中逗号后无空格，也没有行尾空格。
-* **键与字符串**：所有键都是“简单”的 ASCII 标识符风格键。也就是说，它们：
-
-  * 在 JSON 中必须加引号，并且
-  * 在 TOON 中可以不加引号（不含任何会强制要求加引号的字符）。
-
-  许多示例假定值为数字、布尔值、null，或符合 TOON 非引号字符串规则、但在 JSON 中必须加引号的字符串。
-* **数字**：仅在本分析中，假定两种格式使用相同的规范十进制表示。JSON 可以使用指数记法。但为单独分析结构性差异，本文忽略这一点。
-* **ASCII/UTF-8**：假定键和结构性 token 均为 ASCII。因此，字节长度等于字符数（$|x|*{\text{utf8}} = |x|*{\text{char}}$）。非 ASCII 内容对两种格式的影响类似，不会改变结构性结论。
-* **嵌套深度**：本文针对扁平结构和单层嵌套给出闭式表达式。TOON 中每增加一层嵌套，每个嵌套行就会增加 2 字节缩进。嵌套足够深时，紧凑 JSON 的大括号可能比 TOON 的缩进更省字节（参见 [何时不使用 TOON](/zh/guide/getting-started#何时不使用-toon)）。
-* **字节数 vs token 数**：现代大语言模型分词器基于 UTF-8 字节工作。因此，字节长度可以作为 token 数的上界和一阶近似。不过，二者并不是严格线性映射。
-  :::
-
-可以把它理解为一个简化的结构模型。它先剥离真实数据中的各种干扰因素，只关注一个问题：“如果只计算结构性字符，JSON 和 TOON 相比如何？”
-
-## 形式化记号
-
-### 数据模型
-
-设 $\omega$ 为一个基本类型值，满足 $\omega \in {\text{string, number, boolean, null}}$。
-
-设 $\mathcal{O}$ 表示由 $n$ 个键值对组成的对象：
-
-$$
-\mathcal{O} = {(k\_1, v\_1), (k\_2, v\_2), \dots, (k\_n, v\_n)}
-$$
-
-设 $\mathcal{A}$ 表示由 $n$ 个元素组成的数组：
-
-$$
-\mathcal{A} = {v\_1, v\_2, \dots, v\_n}
-$$
-
-其中：
-
-* $k\_i$ 是键（字符串）
-* $v\_i$ 可以是基本类型值 $\omega$、对象 $\mathcal{O}$，或数组 $\mathcal{A}$
-
-因此：$v\_i \in {\omega, \mathcal{O}, \mathcal{A}}$
-
-### 字符串长度
-
-设 $\mathcal{S}$ 为合法 Unicode 字符串的集合。对于任意字符串 $x \in \mathcal{S}$，我们用 $|x|\_{\text{utf8}}$ 表示 $x$ 在 UTF-8 编码下的字节长度。
-
-### 整数长度
-
-设 $n \in \mathbb{Z}\_{\ge 0}$ 为非负整数。以十进制表示 $n$ 所需的字节数为：
-
-$$
-L\_{\text{num}}(n) = \begin{cases}
-1 & \text{if } n = 0 \\
-\lfloor \log\_{10}(|n|) \rfloor + 1 & \text{if } n > 0
-\end{cases}
-$$
-
-## JSON 字节长度函数
-
-对于具有 $n$ 个键的扁平对象：
-
-$$
-L\_{\text{json}}(\mathcal{O}) = \underbrace{2}*{{}} + \sum*{i=1}^{n} (L\_{\text{str}}(k\_i) + \underbrace{1}*{:} + L*{\text{json}}(v\_i)) + \underbrace{(n-1)}\_{\text{逗号}}
-$$
-
-其中 $L\_{\text{str}}(k)$ 是键的长度，包含必需的引号：
-
-$$
-L\_{\text{str}}(k) = |k|*{\text{utf8}} + \underbrace{2}*{\text{引号}}
-$$
-
-### JSON 基本类型值
-
-当 $v\_i$ 是基本数据类型 $\omega$ 时：
-
-| 类型 | 公式 |
-|------|---------|
-| 字符串 | $L\_{\text{str}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}} + 2$ |
-| 数字 | $L\_{\text{num}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
-| 布尔值 | $L\_{\text{bool}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
-| Null | $L\_{\text{null}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
-
-### JSON 数组
-
-当 $v\_i$ 是数组 $\mathcal{A}$ 时：
-
-$$
-L\_{\text{json}}(\mathcal{A}) = \underbrace{2}*{\text{\[]}} + \sum*{i=1}^{n} L\_{\text{json}}(v\_i) + \underbrace{(n-1)}\_{\text{逗号}}
-$$
-
-## TOON 字节长度函数
-
-对于具有 $n$ 个键的扁平对象：
-
-$$
-L\_{\text{toon}}(\mathcal{O}) = \sum\_{i=1}^{n} (L\_{\text{str}}(k\_i) + \underbrace{1}*{:} + \underbrace{1}*{\text{空格}} + L\_{\text{toon}}(v\_i)) + \underbrace{(n-1)}\_{\text{换行符}}
-$$
-
-其中 $L\_{\text{str}}(k)$ 是键的长度（简单键不需要引号）：
-
-$$
-L\_{\text{str}}(k) = |k|\_{\text{utf8}}
-$$
-
-### TOON 基本类型值
-
-当 $v\_i$ 是基本数据类型 $\omega$ 时：
-
-| 类型 | 公式 |
-|------|---------|
-| 字符串（普通） | $L\_{\text{str}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
-| 字符串（看起来像数字/布尔值） | $L\_{\text{str}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}} + 2$ |
-| 数字 | $L\_{\text{num}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
-| 布尔值 | $L\_{\text{bool}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
-| Null | $L\_{\text{null}}(v\_i) = \lvert v\_i\rvert\_{\text{utf8}}$ |
-
-### TOON 简单数组
-
-此处 $L\_{\text{toon}}(\mathcal{A})$ 指整个字段行 `key[N]: ...` 的长度，而不只是数组值本身。
-
-当 $v\_i$ 是简单数组 $\mathcal{A}$ 时：
-
-$$
-L\_{\text{toon}}(\mathcal{A}) = L\_{\text{str}}(k\_i) + \underbrace{1}*{\text{\[}} + L*{\text{num}}(n) + \underbrace{1}*{\text{]}} + \underbrace{1}*{:} + \underbrace{1}*{\text{空格}} + \sum*{i=1}^{n} L\_{\text{toon}}(v\_i) + \underbrace{(n-1)}\_{\text{逗号}}
-$$
-
-### TOON 表格化数组
-
-当 $v\_i$ 是具有 $m$ 个字段的对象数组时：
-
-$$
-\begin{split}
-L\_{\text{toon}}(\mathcal{A}') = L\_{\text{str}}(k\_i) + \underbrace{1}*{\text{\[}} + L*{\text{num}}(n) + \underbrace{1}*{\text{]}} + \underbrace{1}*{{} + \\
-\sum\_{i=1}^{m} L\_{\text{str}}(k\_i) + \underbrace{(m-1)}*{\text{逗号}} + \underbrace{1}*{}} + \underbrace{1}*{:} + \\
-\underbrace{2n}*{\text{缩进}} + \sum\_{i=1}^{n}\sum\_{j=1}^{m} L\_{\text{toon}}(v\_{ij}) + \underbrace{(m-1)n}*{\text{逗号}} + \underbrace{n}*{\text{换行符}}
-\end{split}
-$$
-
-*说明：项 $2n$ 假定缩进大小为 2 空格。*
-
-## 按结构类型的效率分析
-
-以下各小节分别分析一类特定的数据结构。每一节都会给出相应公式，并附简短示例。直观来看，在以下情况下 TOON 通常更省字节：
-
-* 避免重复键名（表格化数组），
-* 避免为键和大多数值加引号，
-* 以及用缩进代替大括号，
-
-但在另一些情况下，TOON 会处于劣势。例如数组的数组需要让每个元素承担固定开销，高度嵌套的配置则会产生较深的缩进。
-
-### 简单对象
-
-带有字符串基本类型值的扁平对象，是 TOON 最占优的场景。JSON 需要大括号，键和字符串也都要加引号。TOON 在根级别不需要大括号，简单键也无需加引号，每个字段单独成行。
-
-对于仅含字符串基本类型值的对象：
-
-$$
-\Delta\_{\text{obj}} = 2 + n + \sum\_{i=1}^{n}(L\_{\text{json}}(v\_i)) - \sum\_{i=1}^{n}(L\_{\text{toon}}(v\_i))
-$$
-
-如果所有值都是可在 TOON 中不加引号的字符串，可简化为：
-
-$$
-f(n) = 2 + 3n
-$$
-
-**示例：** 对于 1,000,000 个对象，TOON 节省 **3,000,002 字节 ≈ 2.86 MB**。
-
-#### 示例验证
-
-::: code-group
-
-```json [JSON (21 字节)]
-{ "id": 1, "name": "Ada" }
-```
-
-```yaml [TOON (15 字节)]
-id: 1
-name: Ada
-```
-
-:::
-
-$$
-\Delta\_{\text{obj}} = 2 + \underbrace{2}*{n} + \underbrace{6}*{\sum L\_{\text{json}}(v\_i)} - \underbrace{4}*{\sum L*{\text{toon}}(v\_i)} = 6
-$$
-
-### 嵌套对象
-
-添加一个包装对象，相当于增加一层嵌套。JSON 会多出一组大括号，TOON 则会增加缩进和换行。对于带有基本类型值的单层嵌套，TOON 仍然占优，但净优势会变小。
-
-对于带有基本类型值的单层嵌套：
-
-$$
-f(n) = 5 + n
-$$
-
-**示例：** 对于 1,000,000 个嵌套对象（深度为 1），TOON 节省 **1,000,005 字节 ≈ 0.95 MB**。
-
-::: warning 注意事项
-该公式仅适用于单层嵌套。TOON 中每增加一层嵌套，每个嵌套行都会增加 2 个空格的缩进。嵌套足够深时，紧凑 JSON 反而可能比 TOON 更省字节。数据无法整理为表格化结构时，这一点尤其明显（参见 [何时不使用 TOON](/zh/guide/getting-started#何时不使用-toon)，以及 [基准测试](/zh/guide/benchmarks) 中的“深度嵌套配置”数据集）。
-:::
-
-#### 示例验证
-
-::: code-group
-
-```json [JSON (30 字节)]
-{ "user": { "id": 1, "name": "Ada" } }
-```
-
-```yaml [TOON (25 字节)]
-user:
-  id: 1
-  name: Ada
-```
-
-:::
-
-$$
-\Delta\_{\text{nested}} = 5
-$$
-
-### 基本类型数组
-
-对于字符串基本类型数组，JSON 写作 `["foo","bar","baz"]`。每个字符串都要加引号，数组本身用 `[]` 表示。TOON 写作 `key[N]: foo,bar,baz`。它只需承担一次长度标记的开销，并省略大部分引号。
-
-对于由 $n$ 个字符串基本类型组成的数组：
-
-$$
-\Delta\_{\text{arr}} = 3 - L\_{\text{num}}(n) + \sum\_{i=1}^{n}(L\_{\text{json}}(v\_i)) - \sum\_{i=1}^{n}(L\_{\text{toon}}(v\_i))
-$$
-
-如果字符串值可在 TOON 中不加引号，可简化为：
-
-$$
-f(n) = 2 + 2n - \lfloor \log\_{10}(|n|) \rfloor
-$$
-
-**示例：** 对于 1,000,000 个元素，TOON 节省 **1,999,996 字节 ≈ 1.91 MB**。
-
-#### 示例验证
-
-::: code-group
-
-```json [JSON (28 字节)]
-{ "tags": ["foo", "bar", "baz"] }
-```
-
-```yaml [TOON (20 字节)]
-tags[3]: foo,bar,baz
-```
-
-:::
-
-$$
-\Delta\_{\text{arr}} = 3 - \underbrace{1}*{L*{\text{num}}(3)} + \underbrace{15}*{\sum L*{\text{json}}} - \underbrace{9}*{\sum L*{\text{toon}}} = 8
-$$
-
-### 根数组
-
-在根级别，JSON 写作 `["x","y","z"]`，TOON 写作 `[3]: x,y,z`。这里不存在对象键开销。TOON 的优势主要来自两点：安全字符串无需加引号，以及用 `[N]:` 代替 `[]`。
-
-对于由 $n$ 个字符串基本类型组成的根数组：
-
-$$
-f(n) = -3 + 2n - \lfloor \log\_{10}(|n|) \rfloor
-$$
-
-**示例：** 对于 1,000,000 个元素，TOON 节省 **1,999,991 字节 ≈ 1.91 MB**。
-
-#### 示例验证
-
-::: code-group
-
-```json [JSON (13 字节)]
-["x", "y", "z"]
-```
-
-```yaml [TOON (10 字节)]
-[3]: x,y,z
-```
-
-:::
-
-$$
-\Delta\_{\text{root}} = \underbrace{9}*{\sum L*{\text{json}}} - 2 - \underbrace{1}*{L*{\text{num}}(3)} - \underbrace{3}*{\sum L*{\text{toon}}} = 3
-$$
-
-### 表格化数组
-
-结构一致的对象数组是 TOON 最适合的场景。JSON 会在每一行重复所有键名。TOON 只声明一次长度和列名（`key[N]{id,qty,...}:`），随后直接按行输出裸值。
-
-对于具有 $n$ 行、$m$ 个字段的对象数组，假定字段值为数字且 $|k| = 3$：
-
-$$
-f(n) = 1 + nm(3 + |k|) - m(1 + |k|) - \lfloor \log\_{10}(|n|) \rfloor
-$$
-
-**示例：** 对于 1,000,000 行、2 个字段、字段名长度为 3 个字符的情况，TOON 节省 **11,999,987 字节 ≈ 11.44 MB**。
-
-这正体现了 TOON 的设计优势：字段只声明一次，数据按行输出。因此，节省的字节数会随行数和字段数同步线性增长。
-
-#### 示例验证
-
-::: code-group
-
-```json [JSON (45 字节)]
-{ "items": [{ "id": 1, "qty": 5 }, { "id": 2, "qty": 3 }] }
-```
-
-```yaml [TOON (29 字节)]
-items[2]{id,qty}:
-  1,5
-  2,3
-```
-
-:::
-
-$$
-\Delta\_{\text{tab}} = 2 + \underbrace{4}*{nm} - \underbrace{2}*{m} + \underbrace{22}*{\Sigma L*{\text{json}}} - \underbrace{1}*{L*{\text{num}}(n)} - \underbrace{5}*{\Sigma L*{\text{toon}}(k)} - \underbrace{4}*{\Sigma L*{\text{toon}}(v)} = 16
-$$
-
-### 数组的数组
-
-由基本类型数组组成的数组，是 TOON 在结构上处于劣势的场景。每个内部数组都会变成一个带有独立首部的列表项。因此，TOON 的每个内部数组都要承担固定开销（`"- "` 加上 `"[m]: "`）。JSON 则只需使用逗号分隔。
-
-::: info 实践提示
-按本文的字节级模型估算，对于由基本类型数组组成的数组，JSON 比 TOON 更省字节。TOON 的每个内部数组除了长度标记本身的开销外，还会额外多出约 6 字节（`"- "` 占 2 字节，`"[m]: "` 占 4 字节）。
-:::
-
-对于具有 $n$ 个外层元素、$m$ 个内层元素的数组的数组：
-
-$$
-\begin{split}
-\Delta\_{\text{arrarr}} = 2 - 6n - \sum\_{i=1}^{n}\sum\_{j=1}^{m} L\_{\text{num}}(m) + \\
-\sum\_{i=1}^{n}\sum\_{j=1}^{m} L\_{\text{json}}(v\_{ij}) - \sum\_{i=1}^{n}\sum\_{j=1}^{m} L\_{\text{toon}}(v\_{ij})
-\end{split}
-$$
-
-对于字符串基本类型且 $m = 2$：
-
-$$
-f(n) = 2 - 6n - \sum\_{i=1}^{n}\sum\_{j=1}^{m} (\lfloor \log\_{10}(|m|) \rfloor + 1) + 2nm
-$$
-
-**示例：** 对于 1,000,000 个数组且 $m = 2$ 的情况，在该模型下 TOON 相比 JSON **多占用 2,999,998 字节 ≈ 2.86 MB**。
-
-#### 示例验证
-
-::: code-group
-
-```json [JSON (23 字节)]
-{ "pairs": [[1, 2], [3, 4]] }
-```
-
-```yaml [TOON (35 字节)]
-pairs[2]:
-  - [2]: 1,2
-  - [2]: 3,4
-```
-
-:::
-
-$$
-\Delta\_{\text{arrarr}} = 2 - \underbrace{12}*{6n} - \underbrace{2}*{\sum L\_{\text{num}}(m)} + \underbrace{4}*{\sum L*{\text{json}}} - \underbrace{4}*{\sum L*{\text{toon}}} = -12
-$$
-
-### 看起来像字面量的字符串
-
-看起来像数字或布尔值的字符串（例如 `"123"`、`"true"`）在 JSON 和 TOON 中都必须加引号。这会略微削弱 TOON 的优势，因为这些值已经无法再省去引号。
-
-对于包含此类字符串的对象：
-
-$$
-\Delta\_{\text{strlit}} = 2 + n
-$$
-
-**示例：** 对于 1,000,000 个对象，TOON 节省 **2,000,002 字节 ≈ 1.91 MB**。
-
-#### 示例验证
-
-::: code-group
-
-```json [JSON (34 字节)]
-{ "version": "123", "enabled": "true" }
-```
-
-```yaml [TOON (30 字节)]
-version: "123"
-enabled: "true"
-```
-
-:::
-
-$$
-\Delta\_{\text{str}} = 2 + \underbrace{2}\_{n} = 4
-$$
-
-### 空结构
-
-即便规模极小，空容器也能体现结构性差异。
-
-**空对象：**
-
-$$
-\Delta\_{\text{EmptyObject}} = 2
-$$
-
-JSON 需要 `{}`（2 字节），而 TOON 中完全为空的根对象可表示为空文档（0 字节）。
-
-**空数组（字段）：**
-
-$$
-\Delta\_{\text{EmptyArray}} = 3
-$$
-
-对于名为 `key` 的字段，JSON 以紧凑形式使用 `{"key":[]}`，而 TOON 使用：
-
-```yaml
-key: []
-```
-
-在该模型下，TOON 固定少用 3 字节。出于向后兼容考虑，旧式 `key[0]:` 形式仍可解码。
-
-## 汇总表
-
-下表汇总了各类结构的效率公式，也列出了在本文建模假设下哪一方更有优势。
-
-| 结构 | 效率公式 | TOON 是否占优？ |
-|-----------|-------------------|-----------------|
-| 简单对象 | $f(n) = 2 + 3n$ | ✅ 是 |
-| 嵌套对象（1 层） | $f(n) = 5 + n$ | ✅ 是（随深度增加而收窄） |
-| 基本类型数组 | $f(n) = 2 + 2n - \lfloor \log\_{10}(n) \rfloor$ | ✅ 是 |
-| 根数组 | $f(n) = -3 + 2n - \lfloor \log\_{10}(n) \rfloor$ | ✅ 是 |
-| 表格化数组 | $f(n) = 1 + nm(3+\lvert k\rvert) - m(1+\lvert k\rvert) - \lfloor \log\_{10}(n) \rfloor$ | ✅ **最佳场景** |
-| 数组的数组 | $f(n) = 2 - 6n + 2nm - \text{overhead}$ | ❌ JSON 在此更优 |
-| 形似字面量的字符串 | $f(n) = 2 + n$ | ✅ 是（优势较小） |
-| 空结构 | $\Delta = 2$ 或 $3$ | ✅ 是 |
-
-简而言之：
-
-* 对于扁平对象，TOON 的收益与字段数量成**线性关系**。
-* 对于数组，收益随元素数量**线性增长**。
-* 对于表格化数组，收益同时随行数和字段数**线性增长**。
-* 数组的数组是 JSON 更省字节的主要结构性场景。
-* 深度嵌套和大量引号会在实际数据中削弱甚至逆转这些优势。
-
-## 结论
-
-这个简化的理论模型印证了 TOON 的设计目标。从结构层面看，在许多常见数据模式中，TOON 可以通过以下方式降低相对于紧凑 JSON 的开销：
-
-* 避免在表格化数组中重复键名，
-* 省略许多键和值的引号，
-* 并在嵌套较浅时用缩进代替大括号。
-
-对于本文考察的结构类型，在上述假设下，除数组的数组外，TOON 的结构性开销都低于紧凑 JSON。UTF-8 字节长度可以作为 token 数的合理一阶近似。因此，这些结构性节省通常会转化为相应模式下更低的 token 数。
-
-同时，这个模型有意做了简化。真实数据集还会受到其他因素影响，例如更深或不规则的嵌套、大量需要加引号的字符串、JSON 中的指数记法，以及分词器的特殊行为。这些因素都可能削弱甚至逆转 TOON 的收益。
-
-[基准测试](/zh/guide/benchmarks) 和 [何时不使用 TOON](/zh/guide/getting-started#何时不使用-toon) 表明，对于深度嵌套或表格化程度较低的数据，紧凑 JSON 可能更高效。请将本页作为理解 TOON *为何* 如此表现的直觉参考，而不是普遍适用的保证。
-
-## 相关资源
-
-* [基准测试](/zh/guide/benchmarks) —— 跨格式的实证 token 数与准确率对比
-* [规范](/zh/reference/spec) —— 正式的 TOON 规范
-
-## 参考文献
-
-本分析基于以下内容：
-
-* **原始研究**：[TOON vs. JSON: A Mathematical Evaluation of Byte Efficiency in Structured Data](https://www.researchgate.net/publication/397903673_TOON_vs_JSON_A_Mathematical_Evaluation_of_Byte_Efficiency_in_Structured_Data)
-* **TOON 规范**：[toon-format/spec](https://github.com/toon-format/spec)
-* **JSON 规范**：[RFC 8259](https://datatracker.ietf.org/doc/html/rfc8259)、[ECMA-404](https://www.ecma-international.org/publications-and-standards/standards/ecma-404/)
-
-***
-
-本页由 Mateo Lafalce（[@mateolafalce](https://github.com/mateolafalce)）贡献。
-
-*对该形式化分析有疑问，或发现了错误？欢迎在 [GitHub](https://github.com/toon-format/spec) 上提交 issue，或为本分析贡献改进内容。*
-
----
-
----
 url: /en/guide/llm-prompts.md
 description: >-
   Prompting strategies for sending TOON to LLMs and validating TOON they
@@ -5068,2471 +7536,3 @@ events[2	]{id	level	message	timestamp}:
 const filtered = decode(modelResponse, { strict: true })
 // ✓ Validated – model correctly filtered and adjusted [N] to 2
 ```
-
----
-
----
-url: /zh/cli.md
-description: 在命令行中将 JSON 转换为 TOON，或反向转换，支持 token 统计、流式处理和分隔符选项。
----
-
-# 命令行接口
-
-`@toon-format/cli` 软件包可以在 JSON 与 TOON 之间双向转换。你可以用它在将 TOON 集成到应用程序之前先测算 token 节省量，也可以在 shell 工作流中与 `curl`、`jq` 等工具配合，通过管道对 JSON 执行 TOON 转换。该 CLI 支持标准输入/输出、token 统计、面向大型数据集的流式处理，以及库中提供的所有编码选项。
-
-该 CLI 基于 `@toon-format/toon` 的 TypeScript 实现构建，并遵循 [最新规范](/zh/reference/spec)。
-
-## 使用方法
-
-### 免安装使用
-
-使用 `npx` 无需安装即可运行该 CLI：
-
-::: code-group
-
-```bash [编码]
-npx @toon-format/cli input.json -o output.toon
-```
-
-```bash [解码]
-npx @toon-format/cli data.toon -o output.json
-```
-
-```bash [标准输入]
-echo '{"name": "Ada"}' | npx @toon-format/cli
-```
-
-:::
-
-### 全局安装
-
-如果要反复使用，也可以选择全局安装：
-
-::: code-group
-
-```bash [npm]
-npm install -g @toon-format/cli
-```
-
-```bash [pnpm]
-pnpm add -g @toon-format/cli
-```
-
-```bash [yarn]
-yarn global add @toon-format/cli
-```
-
-:::
-
-全局安装后，使用 `toon` 命令：
-
-```bash
-toon input.json -o output.toon
-```
-
-## 基本用法
-
-### 自动检测
-
-CLI 会根据文件扩展名自动检测操作类型：
-
-* `.json` 文件 → 编码（JSON 转 TOON）
-* `.toon` 文件 → 解码（TOON 转 JSON）
-
-从标准输入读取时，使用 `--encode` 或 `--decode` 选项指定操作（默认是编码）。
-
-::: code-group
-
-```bash [将 JSON 编码为 TOON]
-toon input.json -o output.toon
-```
-
-```bash [将 TOON 解码为 JSON]
-toon data.toon -o output.json
-```
-
-```bash [输出到标准输出]
-toon input.json
-```
-
-```bash [从标准输入管道传入]
-cat data.json | toon
-echo '{"name": "Ada"}' | toon
-```
-
-```bash [从标准输入解码]
-cat data.toon | toon --decode
-```
-
-:::
-
-按照惯例，TOON 文件使用 `.toon` 扩展名和临时媒体类型 `text/toon`（参见 [规范 §17](https://github.com/toon-format/spec/blob/main/SPEC.md#17-iana-considerations)）。
-
-### 标准输入
-
-省略输入参数，或使用 `-` 表示从标准输入读取。这样就能直接将其他命令的数据通过管道传入：
-
-```bash
-# 不需要参数
-cat data.json | toon
-
-# 使用连字符显式表示标准输入（效果相同）
-cat data.json | toon -
-
-# 从标准输入解码
-cat data.toon | toon --decode
-```
-
-## 性能
-
-### 流式输出
-
-编码和解码操作都使用流式输出，以增量方式写出，而不会在内存中构建完整的输出字符串。这使得该 CLI 处理大型数据集时无需额外配置也能保持高效。
-
-**JSON → TOON（编码）**：
-
-* 逐行流式写出 TOON。
-* 内存中不会保留完整的 TOON 字符串。
-
-**TOON → JSON（解码）**：
-
-* 使用与 `@toon-format/toon` 中 `decodeStream` API 相同的基于事件的流式解码器。
-* 流式写出 JSON token。
-* 内存中不会保留完整的 JSON 字符串。
-* 启用 `--expandPaths safe` 时，内部会回退为非流式解码，以便在写入 JSON 之前应用深度合并展开。
-
-以最小的内存占用处理大文件：
-
-```bash
-# 编码大型 JSON 文件
-toon huge-dataset.json -o output.toon
-
-# 解码大型 TOON 文件
-toon huge-dataset.toon -o output.json
-
-# 通过标准输入高效处理数百万条记录
-cat million-records.json | toon > output.toon
-cat million-records.toon | toon --decode > output.json
-```
-
-峰值内存占用与数据的嵌套深度有关，而非总数据量。这样一来，只要单个嵌套结构能够放入内存，就可以处理任意大小的文件。
-
-::: tip Token 统计
-在编码时使用 `--stats` 选项时，CLI 会构建一次完整的 TOON 字符串以计算准确的 token 数量。若要在超大文件上追求最大内存效率，请省略 `--stats`。
-:::
-
-## 选项
-
-| 选项 | 说明 |
-| ------ | ----------- |
-| `-o, --output <file>` | 输出文件路径（省略时打印到标准输出） |
-| `-e, --encode` | 强制编码模式（覆盖自动检测） |
-| `-d, --decode` | 强制解码模式（覆盖自动检测） |
-| `--delimiter <char>` | 数组分隔符：`,`（逗号）、制表符、`\|`（管道符）。在 bash/zsh 中以 `$'\t'` 传入制表符 |
-| `--indent <number>` | 缩进（默认：`2`） |
-| `--stats` | 显示 token 数量估算值及节省情况（仅编码时可用） |
-| `--no-strict` | 跳过解码校验（数组数量、缩进、首部分隔符）；重复键时后写入的值生效 |
-| `--keyFolding <mode>` | 键折叠模式：`off`、`safe`（默认：`off`） |
-| `--flattenDepth <number>` | 最多折叠的片段数（默认：`Infinity`）——需要配合 `--keyFolding safe` 使用 |
-| `--expandPaths <mode>` | 路径展开模式：`off`、`safe`（默认：`off`） |
-| `--verbose` | 显示完整的堆栈跟踪和错误原因链（默认：`false`） |
-
-## 高级示例
-
-### Token 统计
-
-编码时显示节省的 token 数量：
-
-```bash
-toon data.json --stats -o output.toon
-```
-
-这有助于你在将数据发送给大语言模型之前预估可节省的 token 开销。
-
-输出示例：
-
-```
-✔ Encoded data.json → output.toon
-
-ℹ Token estimates: ~15,145 (JSON) → ~8,745 (TOON)
-✔ Saved ~6,400 tokens (-42.3%)
-```
-
-### 分隔符选项
-
-TOON 支持三种分隔符：逗号（默认）、制表符和管道符。根据数据情况，使用其他分隔符可以进一步节省 token。
-
-::: code-group
-
-```bash [制表符分隔（bash/zsh）]
-toon data.json --delimiter $'\t' -o output.toon
-```
-
-```bash [竖线分隔]
-toon data.json --delimiter "|" -o output.toon
-```
-
-:::
-
-`--delimiter` 的值必须是实际的分隔符字符。在 bash/zsh 中，请使用 `$'\t'` 传入真正的制表符；字面量 `"\t"` 会被视为无效分隔符而被拒绝。
-
-**制表符分隔示例：**
-
-::: code-group
-
-```yaml [制表符]
-items[2	]{id	name	qty	price}:
-  A1	Widget	2	9.99
-  B2	Gadget	1	14.5
-```
-
-```yaml [逗号（默认）]
-items[2]{id,name,qty,price}:
-  A1,Widget,2,9.99
-  B2,Gadget,1,14.5
-```
-
-:::
-
-::: tip
-制表符分隔通常比逗号更有利于降低 token 数，并减少对引号转义的需求。对于大型表格数据，可使用 `--delimiter $'\t'`（bash/zsh）尽可能节省 token。完整指导请参阅 [分隔符策略](/zh/reference/api#分隔符策略)。
-:::
-
-### 宽松解码
-
-跳过校验，实现更快、容错性更强的解码：
-
-```bash
-toon data.toon --no-strict -o output.json
-```
-
-使用 `--no-strict` 时，解码器不再强制要求数组数量匹配、缩进为整数倍，也不再检查首部分隔符是否一致。重复的同级键不再抛出错误——以最后写入的值为准。格式错误的数组首部会回退为普通的 `key: value` 行，而不是报错。
-
-### 解码错误输出
-
-当 TOON 文档解析失败时，CLI 会渲染出错的那一行，并用插入符号指向第一个非空白字符。制表符会显示为 `→`，这样插入符号所在的列就能反映解码器实际看到的内容。
-
-对于一个使用制表符缩进第二行的输入文件（此处用 `→` 表示）：
-
-```
-a:
-→b: 1
-```
-
-CLI 会打印：
-
-```
- ERROR  Failed to decode TOON at line 2: Tabs are not allowed in indentation in strict mode
-
-  2 | →b: 1
-      ^
-```
-
-发生任何错误时，退出码均为 `1`。默认情况下会隐藏堆栈跟踪。传入 `--verbose` 可包含完整堆栈和底层错误原因链——在提交错误报告或诊断意外错误路径时很有用：
-
-```bash
-cat broken.toon | toon --decode --verbose
-```
-
-::: tip 程序化访问
-解码错误由库以 `ToonDecodeError` 实例的形式抛出。CLI 的插入符号渲染基于该类暴露的结构化 `line` 和 `source` 字段构建。如果你想在自己的代码中获得同样详细的诊断信息，请参阅 API 参考中的 [错误处理](/zh/reference/api#错误处理) 部分。
-:::
-
-### 标准输入工作流
-
-该 CLI 可以与 Unix 管道及其他命令行工具无缝集成：
-
-```bash
-# 将 API 响应转换为 TOON
-curl https://api.example.com/data | toon --stats
-
-# 处理大型数据集
-cat large-dataset.json | toon --delimiter $'\t' > output.toon
-
-# 与 jq 串联使用
-jq '.results' data.json | toon > filtered.toon
-```
-
-### 键折叠
-
-折叠嵌套包装层级以减少 token（自规范 v1.5 起支持）：
-
-::: code-group
-
-```bash [基础键折叠]
-toon input.json --keyFolding safe -o output.toon
-```
-
-```bash [限制折叠深度]
-toon input.json --keyFolding safe --flattenDepth 2 -o output.toon
-```
-
-:::
-
-**示例：**
-
-对于如下数据：
-
-```json
-{
-  "data": {
-    "metadata": {
-      "items": ["a", "b"]
-    }
-  }
-}
-```
-
-使用 `--keyFolding safe` 后，输出变为：
-
-```yaml
-data.metadata.items[2]: a,b
-```
-
-而不是：
-
-```yaml
-data:
-  metadata:
-    items[2]: a,b
-```
-
-### 路径展开
-
-在解码时从折叠的键还原嵌套结构：
-
-```bash
-toon data.toon --expandPaths safe -o output.json
-```
-
-这与 `--keyFolding safe` 搭配使用，可实现无损的往返转换。
-
-### 往返转换工作流
-
-```bash
-# 使用折叠进行编码
-toon input.json --keyFolding safe -o compressed.toon
-
-# 使用展开进行解码（恢复原始结构）
-toon compressed.toon --expandPaths safe -o output.json
-
-# 校验往返转换结果
-diff input.json output.json
-```
-
-### 组合选项
-
-组合使用多个选项以获得最大效率：
-
-```bash
-# 键折叠 + 制表符分隔 + 统计信息
-toon data.json --keyFolding safe --delimiter $'\t' --stats -o output.toon
-```
-
----
-
----
-url: /zh/guide/llm-prompts.md
-description: 向大语言模型发送 TOON 以及校验其生成的 TOON 的提示策略，附带示例。
----
-
-# 在大语言模型中使用 TOON
-
-TOON 专为向大语言模型传递结构化数据而设计，能降低 token 成本并提升可靠性。本指南展示如何在提示词中有效使用 TOON，既包括输入（向模型发送数据），也包括输出（让模型生成 TOON）。
-
-本指南关注 TOON 格式本身。代码示例使用 TypeScript 库进行演示，但无论你使用哪种编程语言，同样的模式和技巧都适用。
-
-## 为什么要在大语言模型场景中使用 TOON
-
-大语言模型 token 会产生成本，而 JSON 较为冗长——数组中的每条记录都要重复字段名。TOON 只声明一次字段，然后数据逐行流式呈现，因此在结构一致的数组上尤其能减少 token；与格式化后的 JSON 相比，通常可节省 30%–60%。
-
-TOON 提供了结构护栏：显式的 `[N]` 长度和 `{fields}` 首部，让模型更容易跟踪行数据，也便于你校验输出。严格模式有助于在解码模型响应时检测截断或格式错误的 TOON。
-
-## 将 TOON 作为输入发送
-
-使用 TOON 时，与其描述格式，不如直接展示格式。TOON 的结构本身就能说明格式规则——模型看到这种模式后，通常可以自然地理解并解析它。
-
-将编码后的数据放在代码块中（为清晰起见，标记为 ` ```toon`）：
-
-````md
-数据采用 TOON 格式（2 空格缩进，数组会显示长度和字段）。
-
-```toon
-users[3]{id,name,role,lastLogin}:
-  1,Alice,admin,"2025-01-15T10:30:00Z"
-  2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Charlie,user,"2025-01-13T09:45:00Z"
-```
-
-任务：总结各用户的角色及其最近的活跃情况。
-````
-
-通常有缩进和首部就足够了——模型会像处理熟悉的 YAML 或 CSV 一样处理 TOON。显式的数组长度(`[N]`)和字段头(`{fields}`)有助于模型跟踪结构，对于大型表格尤为有用。
-
-> \[!NOTE]
-> 大多数模型内置的语法高亮并不支持 TOON，因此使用 ` ```toon` 或 ` ```yaml` 都可以。真正重要的是结构本身。
-
-## 让大语言模型生成 TOON
-
-对于输出，当你希望模型**生成** TOON 时：
-
-* **展示期望的首部**（例如 `users[N]{id,name,role}:`）。模型只需填充行数据，而不必重复键名，从而减少生成错误。
-* **说明规则**：2 空格缩进、无尾随空格、`[N]` 需与行数保持一致。
-
-下面这个提示词同时适用于读取和生成场景：
-
-````md
-数据采用 TOON 格式（2 空格缩进，数组会显示长度和字段）。
-
-```toon
-users[3]{id,name,role,lastLogin}:
-  1,Alice,admin,"2025-01-15T10:30:00Z"
-  2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Charlie,user,"2025-01-13T09:45:00Z"
-```
-
-任务：仅以 TOON 格式返回角色为 "user" 的用户。使用相同的首部格式。将 [N] 设为与行数一致。只输出代码块。
-````
-
-**期望的输出：**
-
-```toon
-users[2]{id,name,role,lastLogin}:
-  2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Charlie,user,"2025-01-13T09:45:00Z"
-```
-
-模型将 `[N]` 调整为 `2`，并生成了两行数据。
-
-### 使用严格模式校验
-
-在解码模型生成的 TOON 时，使用严格模式（默认）来捕获错误：
-
-```ts
-import { decode } from '@toon-format/toon'
-
-try {
-  const data = decode(modelOutput, { strict: true })
-  // 成功——数据有效
-}
-catch (error) {
-  // 模型输出格式有误(数组长度不匹配、非法转义等)
-  console.error('校验失败:', error.message)
-}
-```
-
-严格模式会检查数组长度、缩进和转义，帮助你发现内容截断或 TOON 格式错误。完整细节请参阅 [API 参考](/zh/reference/api#decode-input-options)。
-
-## 选择有利于 token 效率的分隔符
-
-如果想进一步减少 token 用量，可以对以制表符分隔的表格使用 `delimiter: '\t'`。制表符是单个字符，通常比逗号更容易被高效地 token 化，也很少出现在自然文本中（因此可以减少引号转义）。
-
-```ts
-const toon = encode(data, { delimiter: '\t' })
-```
-
-在使用制表符时，请告诉模型“字段以制表符分隔”。关于分隔符的更多内容，请参阅 [格式概览](/zh/guide/format-overview#分隔符选项)。
-
-## 流式处理大型输出
-
-在处理大型数据集（数千条记录或深度嵌套结构）时，使用 `encodeLines()` 逐行流式输出 TOON，而不是在内存中构建完整字符串。
-
-```ts
-import { encodeLines } from '@toon-format/toon'
-
-const largeData = await fetchThousandsOfRecords()
-
-// 流式处理大型数据集，而不必将完整字符串加载到内存中
-for (const line of encodeLines(largeData, { delimiter: '\t' })) {
-  process.stdout.write(`${line}\n`)
-}
-```
-
-CLI 同样支持流式处理，以实现内存高效的 JSON 到 TOON 的格式转换：
-
-```bash
-toon large-dataset.json -o output.toon
-```
-
-这种流式处理方式可以在为大语言模型准备大型上下文窗口时避免内存溢出。关于 `encodeLines()` 的完整细节，请参阅 [API 参考](/zh/reference/api#encodelines-input-options)。
-
-**流式消费大语言模型输出：** 如果你的大语言模型客户端提供流式文本，并且你按行缓冲内容，就可以增量解码 TOON：
-
-```ts
-import { decodeFromLines } from '@toon-format/toon'
-
-// 逐行缓冲响应的数据
-const lines: string[] = []
-let buffer = ''
-
-for await (const chunk of modelStream) {
-  buffer += chunk
-  let index: number
-
-  while ((index = buffer.indexOf('\n')) !== -1) {
-    lines.push(buffer.slice(0, index))
-    buffer = buffer.slice(index + 1)
-  }
-}
-
-// 解码已缓冲的行
-const data = decodeFromLines(lines)
-```
-
-关于流式解码 API，请参阅 [`decodeFromLines()`](/zh/reference/api#decodefromlines-lines-options) 和 [`decodeStream()`](/zh/reference/api#decodestream-source-options)。
-
-## 技巧与注意事项
-
-**展示而非描述。** 不要详细解释 TOON 语法——只需展示一个示例即可。模型会从上下文中学习这种模式。一个包含 2-5 行的简单代码块，比大段的文字说明更有效。
-
-**保持示例精简。** 示例使用 2-5 行即可，不必给出几百行。模型会根据模式进行泛化。过大的示例只会浪费 token，而不会提升准确率。
-
-**始终校验输出。** 使用 `strict: true`（默认值）解码生成的 TOON，以便尽早捕获错误。不要在未经检查的情况下，假定模型输出的就是有效的 TOON。
-
-## 真实案例
-
-下面是一个完整的工作流程：向模型发送数据，并校验模型返回的 TOON。
-
-**带有 TOON 输入的提示词：**
-
-````md
-系统日志采用 TOON 格式（制表符分隔）：
-
-```toon
-events[4	]{id	level	message	timestamp}:
-  1	error	Connection timeout	"2025-01-15T10:00:00Z"
-  2	warn	Slow query	"2025-01-15T10:05:00Z"
-  3	info	User login	"2025-01-15T10:10:00Z"
-  4	error	Database error	"2025-01-15T10:15:00Z"
-```
-
-任务：仅以 TOON 格式返回 error 级别的事件。使用相同格式。
-````
-
-**校验响应：**
-
-```ts
-import { decode } from '@toon-format/toon'
-
-const modelResponse = `
-events[2	]{id	level	message	timestamp}:
-  1	error	Connection timeout	"2025-01-15T10:00:00Z"
-  4	error	Database error	"2025-01-15T10:15:00Z"
-`
-
-const filtered = decode(modelResponse, { strict: true })
-// ✓ 校验通过——模型正确地进行了筛选,并将 [N] 调整为 2
-```
-
----
-
----
-url: /zh/playground.md
----
-
-
----
-
----
-url: /zh/guide/benchmarks.md
-description: TOON 在混合结构与纯扁平结构两个赛道上的检索准确率和 Token 使用效率结果。
----
-
-# 基准测试
-
-本页的基准测试从两个关键维度衡量 TOON 的表现：
-
-* **检索准确率**：大语言模型理解不同输入格式并从中提取信息的能力。
-* **Token 使用效率**：每种格式表示相同数据所需的 token 数量。
-
-为了保证公平比较，基准测试被划分为两个赛道：
-
-* **混合结构赛道**：具有嵌套或部分一致结构的数据集（TOON 对比 JSON、YAML、XML）。CSV 被排除在外，因为它无法正确表示这些结构。
-* **纯扁平结构赛道**：具有扁平表格结构、适合使用 CSV 的数据集（CSV 对比 TOON、JSON、YAML、XML）。
-
-## 检索准确率
-
-基准测试包含 209 个数据检索问题，用于评估大语言模型对不同输入格式的理解能力；测试选用了 4 个大语言模型。
-
-#### 数据集目录
-
-| 数据集 | 行数 | 结构 | CSV 支持 | 表格化适用率 |
-| ------- | ---- | --------- | ----------- | ----------- |
-| 字段一致的员工记录 | 100 | 字段一致 | ✓ | 100% |
-| 带嵌套结构的电商订单 | 50 | 嵌套 | ✗ | 33% |
-| 时间序列分析数据 | 60 | 字段一致 | ✓ | 100% |
-| GitHub 前 100 仓库 | 100 | 字段一致 | ✓ | 100% |
-| 部分一致的事件日志 | 75 | 部分一致 | ✗ | 50% |
-| 深度嵌套配置 | 11 | 深度嵌套 | ✗ | 0% |
-| 有效的完整数据集（对照组） | 20 | 字段一致 | ✓ | 100% |
-| 数组被截断：末尾移除 3 行 | 17 | 字段一致 | ✓ | 100% |
-| 超出声明长度的多余行 | 23 | 字段一致 | ✓ | 100% |
-| 字段数量不一致（第 10 行缺少 `salary` 字段） | 20 | 字段一致 | ✓ | 100% |
-| 缺少必需字段（多行缺少 `email` 字段） | 20 | 字段一致 | ✓ | 100% |
-
-**结构类别：**
-
-* **字段一致**：所有对象都具有完全相同的字段，且字段值均为基本类型
-* **部分一致**：部分对象共享相同字段结构，其他对象包含不同字段或嵌套结构
-* **嵌套**：包含嵌套结构（嵌套对象或数组）的对象
-* **深度嵌套**：高度嵌套，表格化适用率极低
-
-**CSV 支持：** ✓（支持），✗（不支持——需要有损的扁平化处理）
-
-**表格化适用率：** 符合 TOON 表格化格式条件（由基本类型值构成的字段一致对象）的数组所占百分比
-
-#### 检索效率排名（每 1K token 的准确率）
-
-按检索效率（每 1,000 个 token 对应的准确率百分比）对各格式进行排名：
-
-```
-TOON           ████████████████████   27.7 acc%/1K tok  │  76.4% acc  │  2,759 tokens
-JSON compact   █████████████████░░░   23.7 acc%/1K tok  │  73.7% acc  │  3,104 tokens
-YAML           ██████████████░░░░░░   19.9 acc%/1K tok  │  74.5% acc  │  3,749 tokens
-JSON           ████████████░░░░░░░░   16.4 acc%/1K tok  │  75.0% acc  │  4,587 tokens
-XML            ██████████░░░░░░░░░░   13.8 acc%/1K tok  │  72.1% acc  │  5,221 tokens
-```
-
-*检索效率分数 = （准确率 % ÷ Token 数） × 1,000。数值越高越好。*
-
-> \[!TIP]
-> TOON 达到了 **76.4%** 的准确率（JSON 为 75.0%），同时所用 token 减少了 **39.9%**。
-
-**关于 CSV 的说明：** 由于它仅支持 209 个问题中的 109 个（仅限扁平表格数据），因此未列入排名。虽然 CSV 对于简单表格数据而言 Token 使用效率极高，但它无法表示其他格式所能处理的嵌套结构。
-
-#### 各模型准确率
-
-4 个大语言模型在 209 个数据检索问题上的准确率：
-
-```
-claude-haiku-4-5-20251001
-→ TOON           ████████████░░░░░░░░    59.8% (125/209)
-  JSON           ███████████░░░░░░░░░    57.4% (120/209)
-  YAML           ███████████░░░░░░░░░    56.0% (117/209)
-  XML            ███████████░░░░░░░░░    55.5% (116/209)
-  JSON compact   ███████████░░░░░░░░░    55.0% (115/209)
-  CSV            ██████████░░░░░░░░░░    50.5% (55/109)
-
-gemini-3-flash-preview
-  XML            ████████████████████    98.1% (205/209)
-  JSON           ███████████████████░    97.1% (203/209)
-  YAML           ███████████████████░    97.1% (203/209)
-→ TOON           ███████████████████░    96.7% (202/209)
-  JSON compact   ███████████████████░    96.7% (202/209)
-  CSV            ███████████████████░    96.3% (105/109)
-
-gpt-5-nano
-→ TOON           ██████████████████░░    90.9% (190/209)
-  JSON compact   ██████████████████░░    90.9% (190/209)
-  JSON           ██████████████████░░    89.0% (186/209)
-  CSV            ██████████████████░░    89.0% (97/109)
-  YAML           █████████████████░░░    87.1% (182/209)
-  XML            ████████████████░░░░    80.9% (169/209)
-
-grok-4-1-fast-non-reasoning
-→ TOON           ████████████░░░░░░░░    58.4% (122/209)
-  YAML           ████████████░░░░░░░░    57.9% (121/209)
-  JSON           ███████████░░░░░░░░░    56.5% (118/209)
-  XML            ███████████░░░░░░░░░    54.1% (113/209)
-  JSON compact   ██████████░░░░░░░░░░    52.2% (109/209)
-  CSV            ██████████░░░░░░░░░░    51.4% (56/109)
-```
-
-> \[!TIP]
-> 在这些数据集上，TOON 达到了 **76.4% 的准确率**（JSON 为 75.0%），同时所用 token 减少了 **39.9%**。
-
-#### 按问题类型划分的表现
-
-| 问题类型 | TOON | JSON | YAML | JSON compact | XML | CSV |
-| ------------- | ---- | ---- | ---- | ---- | ---- | ---- |
-| 字段检索 | 99.6% | 99.3% | 98.5% | 98.5% | 98.9% | 100.0% |
-| 聚合运算 | 61.9% | 61.9% | 59.9% | 58.3% | 54.4% | 50.9% |
-| 筛选过滤 | 56.8% | 53.1% | 56.3% | 55.2% | 51.6% | 50.9% |
-| 结构感知 | 89.0% | 87.0% | 84.0% | 84.0% | 81.0% | 85.9% |
-| 结构校验 | 70.0% | 60.0% | 60.0% | 55.0% | 85.0% | 80.0% |
-
-#### 按数据集划分的表现
-
-##### 字段一致的员工记录
-
-| 格式 | 准确率 | Token 数 | 正确数/总数 |
-| ------ | -------- | ------ | ------------- |
-| `csv` | 73.2% | 2,334 | 120/164 |
-| `toon` | 73.2% | 2,498 | 120/164 |
-| `json-compact` | 73.8% | 3,924 | 121/164 |
-| `yaml` | 73.8% | 4,959 | 121/164 |
-| `json-pretty` | 73.8% | 6,331 | 121/164 |
-| `xml` | 74.4% | 7,296 | 122/164 |
-
-##### 带嵌套结构的电商订单
-
-| 格式 | 准确率 | Token 数 | 正确数/总数 |
-| ------ | -------- | ------ | ------------- |
-| `toon` | 82.3% | 7,458 | 135/164 |
-| `json-compact` | 78.7% | 7,110 | 129/164 |
-| `yaml` | 79.9% | 8,755 | 131/164 |
-| `json-pretty` | 79.3% | 11,234 | 130/164 |
-| `xml` | 77.4% | 12,649 | 127/164 |
-
-##### 时间序列分析数据
-
-| 格式 | 准确率 | Token 数 | 正确数/总数 |
-| ------ | -------- | ------ | ------------- |
-| `csv` | 75.0% | 1,411 | 90/120 |
-| `toon` | 78.3% | 1,553 | 94/120 |
-| `json-compact` | 74.2% | 2,354 | 89/120 |
-| `yaml` | 75.8% | 2,954 | 91/120 |
-| `json-pretty` | 75.0% | 3,681 | 90/120 |
-| `xml` | 72.5% | 4,389 | 87/120 |
-
-##### GitHub 前 100 仓库
-
-| 格式 | 准确率 | Token 数 | 正确数/总数 |
-| ------ | -------- | ------ | ------------- |
-| `csv` | 65.9% | 8,527 | 87/132 |
-| `toon` | 66.7% | 8,779 | 88/132 |
-| `yaml` | 65.2% | 13,141 | 86/132 |
-| `json-compact` | 59.8% | 11,464 | 79/132 |
-| `json-pretty` | 63.6% | 15,157 | 84/132 |
-| `xml` | 56.1% | 17,105 | 74/132 |
-
-##### 部分一致的事件日志
-
-| 格式 | 准确率 | Token 数 | 正确数/总数 |
-| ------ | -------- | ------ | ------------- |
-| `json-compact` | 68.3% | 4,839 | 82/120 |
-| `toon` | 65.0% | 5,819 | 78/120 |
-| `json-pretty` | 69.2% | 6,817 | 83/120 |
-| `yaml` | 61.7% | 5,847 | 74/120 |
-| `xml` | 58.3% | 7,729 | 70/120 |
-
-##### 深度嵌套配置
-
-| 格式 | 准确率 | Token 数 | 正确数/总数 |
-| ------ | -------- | ------ | ------------- |
-| `json-compact` | 90.5% | 568 | 105/116 |
-| `toon` | 94.8% | 655 | 110/116 |
-| `yaml` | 93.1% | 675 | 108/116 |
-| `json-pretty` | 92.2% | 924 | 107/116 |
-| `xml` | 91.4% | 1,013 | 106/116 |
-
-##### 有效的完整数据集（对照组）
-
-| 格式 | 准确率 | Token 数 | 正确数/总数 |
-| ------ | -------- | ------ | ------------- |
-| `toon` | 100.0% | 535 | 4/4 |
-| `json-compact` | 100.0% | 787 | 4/4 |
-| `yaml` | 100.0% | 992 | 4/4 |
-| `json-pretty` | 100.0% | 1,274 | 4/4 |
-| `xml` | 25.0% | 1,462 | 1/4 |
-| `csv` | 0.0% | 483 | 0/4 |
-
-##### 数组被截断：末尾移除 3 行
-
-| 格式 | 准确率 | Token 数 | 正确数/总数 |
-| ------ | -------- | ------ | ------------- |
-| `csv` | 100.0% | 413 | 4/4 |
-| `xml` | 100.0% | 1,243 | 4/4 |
-| `toon` | 0.0% | 462 | 0/4 |
-| `json-pretty` | 0.0% | 1,085 | 0/4 |
-| `yaml` | 0.0% | 843 | 0/4 |
-| `json-compact` | 0.0% | 670 | 0/4 |
-
-##### 超出声明长度的多余行
-
-| 格式 | 准确率 | Token 数 | 正确数/总数 |
-| ------ | -------- | ------ | ------------- |
-| `csv` | 100.0% | 550 | 4/4 |
-| `toon` | 75.0% | 605 | 3/4 |
-| `json-compact` | 75.0% | 901 | 3/4 |
-| `xml` | 100.0% | 1,678 | 4/4 |
-| `yaml` | 75.0% | 1,138 | 3/4 |
-| `json-pretty` | 50.0% | 1,460 | 2/4 |
-
-##### 字段数量不一致（第 10 行缺少 `salary` 字段）
-
-| 格式 | 准确率 | Token 数 | 正确数/总数 |
-| ------ | -------- | ------ | ------------- |
-| `csv` | 100.0% | 480 | 4/4 |
-| `json-compact` | 100.0% | 782 | 4/4 |
-| `yaml` | 100.0% | 985 | 4/4 |
-| `toon` | 100.0% | 1,008 | 4/4 |
-| `json-pretty` | 100.0% | 1,266 | 4/4 |
-| `xml` | 100.0% | 1,453 | 4/4 |
-
-##### 缺少必需字段（多行缺少 `email` 字段）
-
-| 格式 | 准确率 | Token 数 | 正确数/总数 |
-| ------ | -------- | ------ | ------------- |
-| `csv` | 100.0% | 340 | 4/4 |
-| `xml` | 100.0% | 1,409 | 4/4 |
-| `toon` | 75.0% | 974 | 3/4 |
-| `json-pretty` | 50.0% | 1,225 | 2/4 |
-| `yaml` | 25.0% | 951 | 1/4 |
-| `json-compact` | 0.0% | 750 | 0/4 |
-
-#### 按模型划分的表现
-
-##### claude-haiku-4-5-20251001
-
-| 格式 | 准确率 | 正确数/总数 |
-| ------ | -------- | ------------- |
-| `toon` | 59.8% | 125/209 |
-| `json-pretty` | 57.4% | 120/209 |
-| `yaml` | 56.0% | 117/209 |
-| `xml` | 55.5% | 116/209 |
-| `json-compact` | 55.0% | 115/209 |
-| `csv` | 50.5% | 55/109 |
-
-##### gemini-3-flash-preview
-
-| 格式 | 准确率 | 正确数/总数 |
-| ------ | -------- | ------------- |
-| `xml` | 98.1% | 205/209 |
-| `json-pretty` | 97.1% | 203/209 |
-| `yaml` | 97.1% | 203/209 |
-| `toon` | 96.7% | 202/209 |
-| `json-compact` | 96.7% | 202/209 |
-| `csv` | 96.3% | 105/109 |
-
-##### gpt-5-nano
-
-| 格式 | 准确率 | 正确数/总数 |
-| ------ | -------- | ------------- |
-| `toon` | 90.9% | 190/209 |
-| `json-compact` | 90.9% | 190/209 |
-| `json-pretty` | 89.0% | 186/209 |
-| `csv` | 89.0% | 97/109 |
-| `yaml` | 87.1% | 182/209 |
-| `xml` | 80.9% | 169/209 |
-
-##### grok-4-1-fast-non-reasoning
-
-| 格式 | 准确率 | 正确数/总数 |
-| ------ | -------- | ------------- |
-| `toon` | 58.4% | 122/209 |
-| `yaml` | 57.9% | 121/209 |
-| `json-pretty` | 56.5% | 118/209 |
-| `xml` | 54.1% | 113/209 |
-| `json-compact` | 52.2% | 109/209 |
-| `csv` | 51.4% | 56/109 |
-
-#### 测试内容说明
-
-本基准测试衡量的是**大语言模型对不同输入格式的理解能力和数据检索准确率**。每个模型都会接收格式化数据，并需要根据这些数据回答问题。它**不是**在测试模型生成 TOON 输出的能力，而是测试模型读取和理解 TOON 的能力。
-
-#### 测试的数据集
-
-十一个数据集分别用于测试不同的结构模式和校验能力：
-
-**主要数据集：**
-
-1. **表格型**（100 条员工记录）：字段完全一致的对象，最适合 TOON 的表格化格式。
-2. **嵌套型**（50 个电商订单）：包含嵌套客户对象和商品数组的复杂结构。
-3. **分析型**（60 天的指标数据）：带有日期和数值的时间序列数据。
-4. **GitHub**（100 个仓库）：按星标数排名的 GitHub 热门仓库真实数据。
-5. **事件日志**（75 条日志）：部分一致数据，约 50% 为扁平日志，约 50% 带有嵌套的错误对象。
-6. **嵌套配置**（1 份配置）：深度嵌套配置，表格化适用率极低。
-
-**结构校验数据集：**
-
-7. **对照组**：有效的完整数据集（作为校验基线）
-8. **截断**：末尾移除 3 行的数组（测试 `[N]` 长度检测能力）
-9. **多余行**：超出声明长度、多出 3 行的数组
-10. **宽度不匹配**：字段数量不一致（第 10 行缺少 `salary` 字段）
-11. **缺失字段**：系统性的字段缺失（多行缺少 `email` 字段）
-
-#### 问题类型
-
-209 个问题分为五大类动态生成：
-
-* **字段检索（33%）**：可直接查到的值，或可以直接从记录中读取的值（包括布尔值和简单计数，如数组长度）
-  * 示例：“Alice 的薪资是多少？” → `75000`
-  * 示例：“订单 ORD-0042 中有多少件商品？” → `3`
-  * 示例：“订单 ORD-0042 的客户姓名是什么？” → `John Doe`
-
-* **聚合运算（30%）**：数据集层面的总数和平均值，以及单条件筛选（总数、求和、最小/最大值比较）
-  * 示例：“有多少员工在工程部门工作？” → `17`
-  * 示例：“所有订单的总收入是多少？” → `45123.50`
-  * 示例：“有多少员工的薪资 > 80000？” → `23`
-
-* **筛选过滤（23%）**：需要复合逻辑的多条件查询（跨字段的 AND 约束）
-  * 示例：“销售部门中有多少员工的薪资 > 80000？” → `5`
-  * 示例：“有多少在职员工的工作年限超过 10 年？” → `8`
-
-* **结构感知（12%）**：测试模型能否利用输入格式自带的结构信息（如 TOON 的 `[N]` 计数和 `{fields}`，以及 CSV 的表头行）
-  * 示例：“数据集中有多少员工？” → `100`
-  * 示例：“列出员工记录的字段名” → `id, name, email, department, salary, yearsExperience, active`
-  * 示例：“最后一名员工所在部门是什么？” → `Sales`
-
-* **结构校验（2%）**：测试模型能否利用结构元数据识别不完整、被截断或损坏的数据
-  * 示例：“这份数据是否完整有效？” → `YES`（对照数据集）或 `NO`（损坏数据集）
-  * 测试 TOON 的 `[N]` 长度校验和 `{fields}` 一致性检查
-  * 展示 CSV 缺乏结构校验能力的情况
-
-#### 评测流程
-
-1. **格式转换**：每个数据集都会被转换为全部 6 种格式（TOON、JSON、YAML、JSON compact、XML、CSV）。
-2. **向模型提问**：每个模型在提示词中接收格式化数据和问题，并提取答案。
-3. **确定性校验**：使用类型感知的比较方式对答案进行校验（例如 `50000` = `$50,000`、`Engineering` = `engineering`、`2025-01-01` = `January 1, 2025`），无需借助大语言模型裁判。
-
-#### 模型与配置
-
-* **测试模型**：`claude-haiku-4-5-20251001`、`gemini-3-flash-preview`、`gpt-5-nano`、`grok-4-1-fast-non-reasoning`
-* **Token 计数**：使用 `gpt-tokenizer` 和 `o200k_base` 编码（GPT-5 分词器）
-* **温度参数**：未设置（使用模型默认值）
-* **评测总数**：209 个问题 × 6 种格式 × 4 个模型 = 5,016 次大语言模型调用
-
-## Token 使用效率
-
-Token 数量使用 GPT-5 的 `o200k_base` 分词器，并通过 [`gpt-tokenizer`](https://github.com/niieani/gpt-tokenizer) 测量。节省比例以格式化 JSON（2 空格缩进）为主要基线计算，并额外对比 JSON compact、YAML 和 XML。实际节省效果因模型和分词器而异。
-
-基准测试涵盖了不同结构模式（字段一致、部分一致、嵌套、深度嵌套）的数据集，以展示 TOON 的优势场景以及其他格式可能更适用的场景。
-
-#### 混合结构赛道
-
-具有嵌套或部分一致结构的数据集。CSV 被排除在外，因为它无法正确表示这些结构。
-
-```
-🛒 带嵌套结构的电商订单  ┊  表格化适用率:33%
-   │
-   TOON                █████████████░░░░░░░    73,126 tokens
-   ├─ vs JSON          (−33.3%)               109,599 tokens
-   ├─ vs JSON compact  (+5.3%)                 69,459 tokens
-   ├─ vs YAML          (−14.4%)                85,415 tokens
-   └─ vs XML           (−40.7%)               123,344 tokens
-
-🧾 部分一致的事件日志  ┊  表格化适用率:50%
-   │
-   TOON                █████████████████░░░   154,084 tokens
-   ├─ vs JSON          (−15.0%)               181,201 tokens
-   ├─ vs JSON compact  (+19.9%)               128,529 tokens
-   ├─ vs YAML          (−0.8%)                155,397 tokens
-   └─ vs XML           (−25.2%)               205,859 tokens
-
-🧩 深度嵌套配置  ┊  表格化适用率:0%
-   │
-   TOON                ██████████████░░░░░░       620 tokens
-   ├─ vs JSON          (−31.9%)                   911 tokens
-   ├─ vs JSON compact  (+11.1%)                   558 tokens
-   ├─ vs YAML          (−6.3%)                    662 tokens
-   └─ vs XML           (−38.2%)                 1,003 tokens
-
-──────────────────────────────────── 总计 ────────────────────────────────────
-   TOON                ████████████████░░░░   227,830 tokens
-   ├─ vs JSON          (−21.9%)               291,711 tokens
-   ├─ vs JSON compact  (+14.7%)               198,546 tokens
-   ├─ vs YAML          (−5.7%)                241,474 tokens
-   └─ vs XML           (−31.0%)               330,206 tokens
-```
-
-#### 纯扁平结构赛道
-
-具有扁平表格结构、适合使用 CSV 的数据集。
-
-```
-👥 字段一致的员工记录  ┊  表格化适用率:100%
-   │
-   CSV                 ███████████████████░    47,102 tokens
-   TOON                ████████████████████    49,919 tokens   (+6.0% vs CSV)
-   ├─ vs JSON          (−60.7%)               127,063 tokens
-   ├─ vs JSON compact  (−36.9%)                79,059 tokens
-   ├─ vs YAML          (−50.1%)                100,011 tokens
-   └─ vs XML           (−65.9%)               146,579 tokens
-
-📈 时间序列分析数据  ┊  表格化适用率:100%
-   │
-   CSV                 ██████████████████░░     8,383 tokens
-   TOON                ████████████████████     9,115 tokens   (+8.7% vs CSV)
-   ├─ vs JSON          (−59.0%)                22,245 tokens
-   ├─ vs JSON compact  (−35.9%)                14,211 tokens
-   ├─ vs YAML          (−49.0%)                17,858 tokens
-   └─ vs XML           (−65.8%)                26,616 tokens
-
-⭐ GitHub 前 100 仓库  ┊  表格化适用率:100%
-   │
-   CSV                 ███████████████████░     8,512 tokens
-   TOON                ████████████████████     8,744 tokens   (+2.7% vs CSV)
-   ├─ vs JSON          (−42.3%)                15,144 tokens
-   ├─ vs JSON compact  (−23.7%)                11,454 tokens
-   ├─ vs YAML          (−33.4%)                13,128 tokens
-   └─ vs XML           (−48.9%)                17,095 tokens
-
-──────────────────────────────────── 总计 ────────────────────────────────────
-   CSV                 ███████████████████░    63,997 tokens
-   TOON                ████████████████████    67,778 tokens   (+5.9% vs CSV)
-   ├─ vs JSON          (−58.8%)               164,452 tokens
-   ├─ vs JSON compact  (−35.3%)                104,724 tokens
-   ├─ vs YAML          (−48.3%)                130,997 tokens
-   └─ vs XML           (−64.4%)                190,290 tokens
-```
-
-#### 📈 时间序列分析数据
-
-**节省：** 13,130 个 token（相较 JSON 减少 59.0%）
-
-**JSON**（22,245 个 token）：
-
-```json
-{
-  "metrics": [
-    {
-      "date": "2025-01-01",
-      "views": 6138,
-      "clicks": 174,
-      "conversions": 12,
-      "revenue": 2712.49,
-      "bounceRate": 0.35
-    },
-    {
-      "date": "2025-01-02",
-      "views": 4616,
-      "clicks": 274,
-      "conversions": 34,
-      "revenue": 9156.29,
-      "bounceRate": 0.56
-    },
-    {
-      "date": "2025-01-03",
-      "views": 4460,
-      "clicks": 143,
-      "conversions": 8,
-      "revenue": 1317.98,
-      "bounceRate": 0.59
-    },
-    {
-      "date": "2025-01-04",
-      "views": 4740,
-      "clicks": 125,
-      "conversions": 13,
-      "revenue": 2934.77,
-      "bounceRate": 0.37
-    },
-    {
-      "date": "2025-01-05",
-      "views": 6428,
-      "clicks": 369,
-      "conversions": 19,
-      "revenue": 1317.24,
-      "bounceRate": 0.3
-    }
-  ]
-}
-```
-
-**TOON**（9,115 个 token）：
-
-```
-metrics[5]{date,views,clicks,conversions,revenue,bounceRate}:
-  2025-01-01,6138,174,12,2712.49,0.35
-  2025-01-02,4616,274,34,9156.29,0.56
-  2025-01-03,4460,143,8,1317.98,0.59
-  2025-01-04,4740,125,13,2934.77,0.37
-  2025-01-05,6428,369,19,1317.24,0.3
-```
-
-***
-
-#### ⭐ GitHub 前 100 仓库
-
-**节省：** 6,400 个 token（相较 JSON 减少 42.3%）
-
-**JSON**（15,144 个 token）：
-
-```json
-{
-  "repositories": [
-    {
-      "id": 28457823,
-      "name": "freeCodeCamp",
-      "repo": "freeCodeCamp/freeCodeCamp",
-      "description": "freeCodeCamp.org's open-source codebase and curriculum. Learn math, programming,…",
-      "createdAt": "2014-12-24T17:49:19Z",
-      "updatedAt": "2025-10-28T11:58:08Z",
-      "pushedAt": "2025-10-28T10:17:16Z",
-      "stars": 430886,
-      "watchers": 8583,
-      "forks": 42146,
-      "defaultBranch": "main"
-    },
-    {
-      "id": 132750724,
-      "name": "build-your-own-x",
-      "repo": "codecrafters-io/build-your-own-x",
-      "description": "Master programming by recreating your favorite technologies from scratch.",
-      "createdAt": "2018-05-09T12:03:18Z",
-      "updatedAt": "2025-10-28T12:37:11Z",
-      "pushedAt": "2025-10-10T18:45:01Z",
-      "stars": 430877,
-      "watchers": 6332,
-      "forks": 40453,
-      "defaultBranch": "master"
-    },
-    {
-      "id": 21737465,
-      "name": "awesome",
-      "repo": "sindresorhus/awesome",
-      "description": "😎 Awesome lists about all kinds of interesting topics",
-      "createdAt": "2014-07-11T13:42:37Z",
-      "updatedAt": "2025-10-28T12:40:21Z",
-      "pushedAt": "2025-10-27T17:57:31Z",
-      "stars": 410052,
-      "watchers": 8017,
-      "forks": 32029,
-      "defaultBranch": "main"
-    }
-  ]
-}
-```
-
-**TOON**（8,744 个 token）：
-
-```
-repositories[3]{id,name,repo,description,createdAt,updatedAt,pushedAt,stars,watchers,forks,defaultBranch}:
-  28457823,freeCodeCamp,freeCodeCamp/freeCodeCamp,"freeCodeCamp.org's open-source codebase and curriculum. Learn math, programming,…","2014-12-24T17:49:19Z","2025-10-28T11:58:08Z","2025-10-28T10:17:16Z",430886,8583,42146,main
-  132750724,build-your-own-x,codecrafters-io/build-your-own-x,Master programming by recreating your favorite technologies from scratch.,"2018-05-09T12:03:18Z","2025-10-28T12:37:11Z","2025-10-10T18:45:01Z",430877,6332,40453,master
-  21737465,awesome,sindresorhus/awesome,😎 Awesome lists about all kinds of interesting topics,"2014-07-11T13:42:37Z","2025-10-28T12:40:21Z","2025-10-27T17:57:31Z",410052,8017,32029,main
-```
-
-## 相关资源
-
-* [字节级形式化模型](/zh/reference/efficiency-formalization) —— 与 JSON 相比的字节效率数学分析
-* [规范](/zh/reference/spec) —— 正式的 TOON 规范
-
----
-
----
-url: /zh/ecosystem/implementations.md
-description: 跨语言的官方与社区 TOON 实现，以及贡献指引。
----
-
-# 实现列表
-
-TOON 在多种编程语言中拥有官方与社区实现。所有实现都力求遵循同一份 [规范](https://github.com/toon-format/spec)，以确保兼容性和互操作性。
-
-本文档站点中的代码示例默认使用 TypeScript 实现，但相关格式和概念同样适用于所有语言。
-
-> \[!NOTE]
-> 在其他语言中实现 TOON 时，请遵循 [规范](https://github.com/toon-format/spec/blob/main/SPEC.md) 以确保各实现之间的兼容性。[一致性测试](https://github.com/toon-format/spec/tree/main/tests) 提供了与语言无关的测试用例，用于校验你的实现。
-
-## 官方实现
-
-以下实现由专门团队积极维护。欢迎参与贡献！你可以在相应仓库中提交 issue、发起 PR，或讨论实现细节。
-
-| 语言 | 仓库 | 状态 | 维护者 |
-|----------|------------|--------|------------|
-| **.NET** | [toon-dotnet](https://github.com/toon-format/toon-dotnet) | 开发中 | 官方团队 |
-| **Dart** | [toon-dart](https://github.com/toon-format/toon-dart) | 开发中 | 官方团队 |
-| **Go** | [toon-go](https://github.com/toon-format/toon-go) | 开发中 | 官方团队 |
-| **Java** | [toon-java](https://github.com/toon-format/toon-java) | ✅ 稳定 | 官方团队 |
-| **Julia** | [ToonFormat.jl](https://github.com/toon-format/ToonFormat.jl) | ✅ 稳定 | 官方团队 |
-| **Python** | [toon-python](https://github.com/toon-format/toon-python) | ✅ 稳定 | 官方团队 |
-| **Rust** | [toon-rust](https://github.com/toon-format/toon-rust) | ✅ 稳定 | 官方团队 |
-| **Swift** | [toon-swift](https://github.com/toon-format/toon-swift) | ✅ 稳定 | 官方团队 |
-| **TypeScript/JavaScript** | [toon](https://github.com/toon-format/toon/tree/main/packages/toon) | ✅ 稳定 | 官方团队 |
-
-## 社区实现
-
-社区成员为其他语言创建了以下实现：
-
-| 语言 | 仓库 | 维护者 |
-|----------|------------|------------|
-| **Apex** | [ApexToon](https://github.com/Eacaw/ApexToon) | [@Eacaw](https://github.com/Eacaw) |
-| **C** | [TOONc](https://github.com/UsboKirishima/TOONc) | [@UsboKirishima](https://github.com/UsboKirishima) |
-| **C++** | [ctoon](https://github.com/mohammadraziei/ctoon) | [@mohammadraziei](https://github.com/mohammadraziei) |
-| **C#** | [ToonEncoder](https://github.com/Cysharp/ToonEncoder) | [@Cysharp](https://github.com/Cysharp/ToonEncoder) |
-| **Clojure** | [toon](https://github.com/vadelabs/toon) | [@vadelabs](https://github.com/vadelabs) |
-| **Crystal** | [toon-crystal](https://github.com/mamantoha/toon-crystal) | [@mamantoha](https://github.com/mamantoha) |
-| **Delphi** | [delphi-toon](https://github.com/ernestoalconada/delphi-toon) | [@ernestoalconada](https://github.com/ernestoalconada) |
-| **Elixir** | [toon\_ex](https://github.com/kentaro/toon_ex) | [@kentaro](https://github.com/kentaro) |
-| **Gleam** | [toon\_codec](https://github.com/axelbellec/toon_codec) | [@axelbellec](https://github.com/axelbellec) |
-| **Go** | [gotoon](https://github.com/alpkeskin/gotoon) | [@alpkeskin](https://github.com/alpkeskin) |
-| **Java** | [json-io](https://github.com/jdereg/json-io) | [@jdereg](https://github.com/jdereg) |
-| **Kotlin** | [ktoon](https://github.com/lukelast/ktoon)| [@lukelast](https://github.com/lukelast) |
-| **Laravel Framework** | [laravel-toon](https://github.com/mischasigtermans/laravel-toon) | [@mischasigtermans](https://github.com/mischasigtermans) |
-| **Lua/Neovim** | [toon.nvim](https://github.com/thalesgelinger/toon.nvim) | [@thalesgelinger](https://github.com/thalesgelinger) |
-| **Matlab** | [ctoon](https://github.com/mohammadraziei/ctoon) | [@mohammadraziei](https://github.com/mohammadraziei) |
-| **OCaml** | [ocaml-toon](https://github.com/davesnx/ocaml-toon) | [@davesnx](https://github.com/davesnx) |
-| **Perl** | [Data::TOON](https://github.com/ytnobody/p5-Data-TOON) | [@ytnobody](https://github.com/ytnobody) |
-| **PHP** | [toon-php](https://github.com/HelgeSverre/toon-php) | [@HelgeSverre](https://github.com/HelgeSverre) |
-| **Python**（C++ 后端） | [ctoon](https://github.com/mohammadraziei/ctoon) | [@mohammadraziei](https://github.com/mohammadraziei) |
-| **Python**（Rust 后端） | [toons](https://github.com/alesanfra/toons) | [@alesanfra](https://github.com/alesanfra) |
-| **R** | [toon](https://github.com/laresbernardo/toon) | [@laresbernardo](https://github.com/laresbernardo) |
-| **Ruby** | [toon-ruby](https://github.com/andrepcg/toon-ruby) | [@andrepcg](https://github.com/andrepcg) |
-| **Scala** | [toon4s](https://github.com/vim89/toon4s) | [@vim89](https://github.com/vim89) |
-| **Zig** | [toon-zig](https://github.com/LatentEvals/toon-zig) | [@montanaflynn](https://github.com/montanaflynn) |
-
-## 贡献一个新的实现
-
-想为某个新的语言构建 TOON 实现吗？太棒了！以下是入门的一些步骤：
-
-1. **遵循规范**：实现 [最新规范](https://github.com/toon-format/spec/blob/main/SPEC.md)。
-2. **添加测试**：运行 [一致性测试套件](https://github.com/toon-format/spec/tree/main/tests)。
-3. **编写使用文档**：提供一份清晰的 README，包含安装和使用示例。
-4. **分享出来**：提交一个 PR，将你的实现添加到 [github.com/toon-format/toon](https://github.com/toon-format/toon) 的 README 中。
-
----
-
----
-url: /zh/ecosystem/tools-and-playgrounds.md
-description: TOON Playground、CLI、编辑器支持和生态工具。
----
-
-# 工具与 Playground
-
-使用以下工具以交互方式体验 TOON 格式，进行 token 对比、格式转换和校验。
-
-## Playground
-
-### 官方 Playground
-
-[TOON Playground](/zh/playground)（在线试用环境）支持将 JSON 或 YAML 实时转换为 TOON、对比 token 数量，并通过 URL 分享实验结果。
-
-### 社区 Playground
-
-* [格式 Token 化 Playground](https://www.curiouslychase.com/playground/format-tokenization-exploration)
-* [TOON Tools](https://toontools.vercel.app/)
-
-## CLI 工具
-
-官方 TOON CLI 提供命令行转换、token 统计以及完整的编码/解码功能。完整文档请参阅 [CLI 参考](/zh/cli/)。
-
-```bash
-npx @toon-format/cli input.json --stats -o output.toon
-```
-
-## 编辑器支持
-
-### VS Code
-
-[TOON Language Support](https://marketplace.visualstudio.com/items?itemName=vishalraut.vscode-toon) —— 语法高亮、校验、转换和 token 分析。
-
-可从 [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=vishalraut.vscode-toon) 安装，或通过命令行安装：
-
-```bash
-code --install-extension vishalraut.vscode-toon
-```
-
-### Tree-sitter 语法
-
-[tree-sitter-toon](https://github.com/3swordman/tree-sitter-toon) —— 适用于兼容 Tree-sitter 的编辑器（Neovim、Helix、Emacs、Zed）的语法定义。
-
-### Neovim
-
-[toon.nvim](https://github.com/thalesgelinger/toon.nvim) —— 基于 Lua 的 Neovim 插件。
-
-### 其他编辑器
-
-可以使用 YAML 语法高亮作为近似方案。大多数编辑器都支持将 `.toon` 文件关联到 YAML 语言模式。
-
-## 数据库
-
-### ToonStore
-
-[ToonStore](https://github.com/Kalama-Tech/toonstoredb) —— 一个兼容 Redis、以 TOON 格式存储数据的嵌入式数据库，采用 Rust 实现。
-
-## ORM
-
-### TORM
-
-[TORM](https://github.com/Kalama-Tech/torm) —— 与 ToonStore 数据库配合使用的 ORM，提供适用于 Node.js、Python、Go 和 PHP 的 SDK。
-
-## Web API
-
-如果你正在构建需要处理 TOON 的 Web 应用，可以在浏览器中使用这个 TypeScript 库：
-
-```ts
-import { decode, encode } from '@toon-format/toon'
-
-// 可在浏览器、Node.js、Deno 和 Bun 中运行
-const toon = encode(data)
-const data = decode(toon)
-```
-
-详情请参阅 [API 参考](/zh/reference/api)。
-
-## MCP
-
-### Tooner
-
-[Tooner](https://github.com/chaindead/tooner) —— 将工具调用返回的 JSON 结果转换为 TOON 的 MCP 代理。
-
----
-
----
-url: /zh/guide/getting-started.md
-description: TOON 是什么、何时使用它，以及使用 TypeScript 库进行编码/解码的第一个示例。
----
-
-# 快速开始
-
-## 什么是 TOON ？
-
-**面向 Token 的对象表示法(Token-Oriented Object Notation)** 是一种紧凑、人类可读的 JSON 数据模型编码方式，能够最大限度地减少 token 消耗，并让大语言模型更可靠地解析结构。它专为大语言模型输入场景设计，可作为你现有 JSON 的即插即用、无损编码形式。
-
-TOON 结合了 YAML 基于缩进的嵌套对象结构，以及 CSV 风格的表格布局（用于结构一致的数组）。TOON 最适合的场景是“结构一致的对象数组”（每行有多个字段，且各条目结构相同），在提供 CSV 般紧凑性的同时，还增加了明确的结构标记，帮助大语言模型更可靠地解析和校验数据。
-
-可以把它看作一层“翻译层”：在程序中照常使用 JSON，而在发送给大语言模型之前将其编码为 TOON。
-
-### 为什么选择 TOON ？
-
-标准 JSON 冗长且消耗大量 token。对于结构一致的对象数组，JSON 会为每条记录重复每一个字段名：
-
-```json
-{
-  "users": [
-    { "id": 1, "name": "Alice", "role": "admin" },
-    { "id": 2, "name": "Bob", "role": "user" }
-  ]
-}
-```
-
-YAML 通过缩进代替大括号减少了一些冗余：
-
-```yaml
-users:
-  - id: 1
-    name: Alice
-    role: admin
-  - id: 2
-    name: Bob
-    role: user
-```
-
-TOON 更进一步，只声明一次字段，然后数据逐行流式呈现：
-
-```yaml
-users[2]{id,name,role}:
-  1,Alice,admin
-  2,Bob,user
-```
-
-`[2]` 声明了数组长度，使大语言模型能够回答“数据集有多大”之类的问题，并检测内容是否被截断。`{id,name,role}` 声明了字段名。每条记录（即每一行）都由一份紧凑的逗号分隔值列表构成。这种模式贯穿 TOON 始终：结构只声明一次，数据紧凑地流式呈现。最终效果接近 CSV 的信息密度，同时又保留了显式的结构信息。
-
-下面是一个更贴近实际场景的例子，展示 TOON 如何同时处理嵌套对象和表格化数组：
-
-::: code-group
-
-```json [JSON (235 个 token)]
-{
-  "context": {
-    "task": "Our favorite hikes together",
-    "location": "Boulder",
-    "season": "spring_2025"
-  },
-  "friends": ["ana", "luis", "sam"],
-  "hikes": [
-    {
-      "id": 1,
-      "name": "Blue Lake Trail",
-      "distanceKm": 7.5,
-      "elevationGain": 320,
-      "companion": "ana",
-      "wasSunny": true
-    },
-    {
-      "id": 2,
-      "name": "Ridge Overlook",
-      "distanceKm": 9.2,
-      "elevationGain": 540,
-      "companion": "luis",
-      "wasSunny": false
-    },
-    {
-      "id": 3,
-      "name": "Wildflower Loop",
-      "distanceKm": 5.1,
-      "elevationGain": 180,
-      "companion": "sam",
-      "wasSunny": true
-    }
-  ]
-}
-```
-
-```yaml [TOON (106 个 token)]
-context:
-  task: Our favorite hikes together
-  location: Boulder
-  season: spring_2025
-friends[3]: ana,luis,sam
-hikes[3]{id,name,distanceKm,elevationGain,companion,wasSunny}:
-  1,Blue Lake Trail,7.5,320,ana,true
-  2,Ridge Overlook,9.2,540,luis,false
-  3,Wildflower Loop,5.1,180,sam,true
-```
-
-:::
-
-注意 TOON 是如何把 YAML 的缩进风格用于 `context` 对象、把内联格式用于基本类型数组 `friends`、把表格格式用于结构化数组 `hikes` 的。每种格式都会根据数据结构自动选择。
-
-### 设计目标
-
-TOON 针对特定使用场景进行了优化。它旨在：
-
-* 通过只声明一次结构并流式呈现数据，让结构一致的对象数组尽可能紧凑。
-* 保持完全无损且具有确定性——往返转换会保留所有数据和结构。
-* 通过显式的结构标记，让大语言模型和人类都能简单、稳健地解析。
-* 提供校验护栏（数组长度、字段数量），帮助检测截断和格式错误的输出。
-
-## 何时使用 TOON
-
-TOON 在处理“结构一致的对象数组”（即各条目结构相同的数据）时表现出色。对于大语言模型提示词，该格式能生成确定性的、极少使用引号的文本，并带有内置校验。显式的数组长度(`[N]`)和字段头(`{fields}`)有助于检测截断和格式错误的数据，同时表格化结构只需声明一次字段，而不必在每一行中重复。
-
-::: tip
-TOON 格式已经稳定，但也仍在持续演进中。一切都不是一成不变的——欢迎通过为 [规范](https://github.com/toon-format/spec) 做贡献或分享反馈来帮助塑造它的未来方向。
-:::
-
-## 何时不使用 TOON
-
-TOON 并非总是最佳选择。在以下情况下可以考虑其他方案：
-
-* **深度嵌套或结构不一致的数据**（表格化适用率 ≈ 0%）：JSON 压缩版通常使用更少的 token。例如：具有多层嵌套的复杂配置对象。
-* **半一致的数组**（表格化适用率约 40%–60%）：节省的 token 会减少。如果你的处理流程已经依赖 JSON，建议优先使用 JSON。
-* **纯表格数据**：对于扁平表格，CSV 比 TOON 更小。TOON 会增加少量开销（约 5%–10%），以提供能提升大语言模型可靠性的结构（数组长度声明、字段头、分隔符作用域）。
-* **对延迟敏感的应用**：请在你自己的实际环境中进行基准测试。某些部署场景（尤其是本地/量化模型）处理紧凑 JSON 的速度可能反而更快，尽管 TOON 的 token 数更低。
-
-::: info
-关于不同结构下基于数据的对比，请参阅 [基准测试](/zh/guide/benchmarks)。在针对延迟进行优化时，请分别测量 TOON 和 JSON 压缩版的首字时间(TTFT)、每秒 token 数和总耗时，并在你的具体环境中选择更快的那一个。
-:::
-
-## 安装
-
-### TypeScript 库
-
-使用你偏好的包管理器安装该库：
-
-::: code-group
-
-```bash [npm]
-npm install @toon-format/toon
-```
-
-```bash [pnpm]
-pnpm add @toon-format/toon
-```
-
-```bash [yarn]
-yarn add @toon-format/toon
-```
-
-:::
-
-### CLI
-
-CLI 可以通过 `npx` 免安装使用，也可以全局安装：
-
-::: code-group
-
-```bash [npx（无需安装）]
-npx @toon-format/cli input.json -o output.toon
-```
-
-```bash [npm]
-npm install -g @toon-format/cli
-```
-
-```bash [pnpm]
-pnpm add -g @toon-format/cli
-```
-
-```bash [yarn]
-yarn global add @toon-format/cli
-```
-
-:::
-
-完整的 CLI 文档请参阅 [CLI 参考](/zh/cli/)。
-
-## 媒体类型与文件扩展名
-
-按照惯例，TOON 文件使用 `.toon` 扩展名。对于 HTTP 传输，临时的媒体类型为 `text/toon`，并始终使用 UTF-8 编码。你可以显式指定 `charset=utf-8`，但这是可选的——UTF-8 是默认假设。这遵循了 [规范第 17 节](https://github.com/toon-format/spec/blob/main/SPEC.md#17-iana-considerations) 中所述的注册流程。
-
-## 你的第一个示例
-
-下面的示例使用 TypeScript 库进行演示，但同样的操作在任何拥有 TOON 实现的语言中都同样适用。
-
-让我们用 TypeScript 库编码一个简单的数据集：
-
-```ts
-import { encode } from '@toon-format/toon'
-
-const data = {
-  users: [
-    { id: 1, name: 'Alice', role: 'admin' },
-    { id: 2, name: 'Bob', role: 'user' }
-  ]
-}
-
-console.log(encode(data))
-```
-
-**输出：**
-
-```yaml
-users[2]{id,name,role}:
-  1,Alice,admin
-  2,Bob,user
-```
-
-### 解码到 JSON
-
-解码同样简单：
-
-```ts
-import { decode } from '@toon-format/toon'
-
-const toon = `
-users[2]{id,name,role}:
-  1,Alice,admin
-  2,Bob,user
-`
-
-const data = decode(toon)
-console.log(JSON.stringify(data, null, 2))
-```
-
-**输出：**
-
-```json
-{
-  "users": [
-    { "id": 1, "name": "Alice", "role": "admin" },
-    { "id": 2, "name": "Bob", "role": "user" }
-  ]
-}
-```
-
-往返转换是无损的：`decode(encode(x))` 始终等于 `x`（在对 `Date`、`NaN` 等非 JSON 类型进行归一化处理之后）。
-
-## 接下来去哪里
-
-现在你已经看过了第一个 TOON 文档，接下来可以阅读 [格式概览](/zh/guide/format-overview) 了解完整的语法细节（对象、数组、引号规则、键折叠），然后了解 [在大语言模型中使用 TOON](/zh/guide/llm-prompts)，看看如何在提示词中有效使用它。想了解实现细节，可以查阅 [API 参考](/zh/reference/api)(TypeScript)或 [规范](/zh/reference/spec)（与语言无关的规范性规则）。
-
----
-
----
-url: /zh/guide/format-overview.md
-description: 通过具体示例了解 TOON 语法——对象、数组、首部、键折叠和引号规则。
----
-
-# 格式概览
-
-带有具体示例的 TOON 语法参考。入门介绍请参阅 [快速开始](/zh/guide/getting-started)。
-
-## 数据模型
-
-TOON 与 JSON 使用相同的方式对数据建模：
-
-* **基本类型(Primitives)**：字符串、数字、布尔值和 `null`
-* **对象(Objects)**：字符串键到值的映射
-* **数组(Arrays)**：值的有序序列
-
-### 根形式
-
-一个 TOON 文档可以表示不同的根形式：
-
-* **根对象**（最常见）：字段位于顶层（深度为 0），没有父键
-* **根数组**：以顶层（深度为 0）的 `[N]:` 或 `[N]{fields}:` 开头
-* **根基本类型**：单个基本类型值（字符串、数字、布尔值或 null）
-
-本指南中的大多数示例使用根对象，但该格式同等支持这三种形式（[规范第 5 节](https://github.com/toon-format/spec/blob/main/SPEC.md#5-concrete-syntax-and-root-form)）。
-
-## 对象
-
-### 简单对象
-
-带有基本类型值的对象使用 `key: value` 语法，每行一个字段：
-
-```yaml
-id: 123
-name: Ada
-active: true
-```
-
-缩进取代了 JSON 式的大括号。冒号后跟一个空格。
-
-### 嵌套对象
-
-嵌套对象增加一级缩进（默认：2 个空格）：
-
-```yaml
-user:
-  id: 123
-  name: Ada
-```
-
-当一个键以 `:` 结尾且同一行没有值时，它就表示接下来是一个嵌套对象。下一缩进层级的所有行都属于该对象。
-
-### 空对象
-
-根级别的空对象会产生一个空文档（没有任何行）。嵌套的空对象则表示为单独的 `key:`，没有子内容。
-
-## 数组
-
-TOON 会检测数组结构，并选择最高效的表示方式。数组总是在方括号中声明其长度：`[N]`。
-
-### 基本类型数组（内联）
-
-基本类型（字符串、数字、布尔值、null）的数组以内联形式呈现：
-
-```yaml
-tags[3]: admin,ops,dev
-```
-
-值之间用分隔符（默认为逗号）隔开。包含当前生效分隔符的字符串必须加引号。
-
-### 对象数组（表格化）
-
-当数组中的所有对象共享同一组基本类型值的键时，TOON 会使用表格化格式：
-
-::: code-group
-
-```yaml [基础表格化]
-items[2]{sku,qty,price}:
-  A1,2,9.99
-  B2,1,14.5
-```
-
-```yaml [值中包含空格]
-users[2]{id,name,role}:
-  1,Alice Admin,admin
-  2,"Bob Smith",user
-```
-
-:::
-
-首部 `items[2]{sku,qty,price}:` 声明了：
-
-* **数组长度**：`[2]` 表示 2 行
-* **字段名**：`{sku,qty,price}` 定义了各列
-* **生效分隔符**：逗号（默认）
-
-每一行的值都按字段列表的顺序排列，均为基本类型（字符串、数字、布尔值、null），彼此以分隔符隔开。
-
-> \[!NOTE]
-> 表格化格式需要满足三个条件：所有对象的字段集合完全相同（键相同，但每个对象内的顺序可以不同）；字段值仅包含基本类型（不允许嵌套数组或对象）；且每个对象至少包含一个键。如果数组中包含出现空对象 `{}`，则会回退到下文所述的展开列表形式。
-
-### 混合与非一致数组
-
-不满足表格化条件的数组会使用带连字符标记的列表格式：
-
-```yaml
-items[3]:
-  - 1
-  - a: 1
-  - text
-```
-
-每个元素以 `- ` 开头，缩进比父级数组首部深一级。
-
-### 作为列表项的对象
-
-当数组元素是对象时，它会以列表项的形式出现：
-
-```yaml
-items[2]:
-  - id: 1
-    name: First
-  - id: 2
-    name: Second
-    extra: true
-```
-
-当一个表格化数组是列表项对象的第一个字段时，表格化首部会出现在连字符所在的那一行；此时行数据缩进两级，其他字段缩进一级：
-
-```yaml
-items[1]:
-  - users[2]{id,name}:
-      1,Ada
-      2,Bob
-    status: active
-```
-
-当对象只有一个表格化字段时，同样的模式也适用：
-
-```yaml
-items[1]:
-  - users[2]{id,name}:
-      1,Ada
-      2,Bob
-```
-
-这是“第一个字段为表格化数组”的列表项对象的规范编码方式。
-
-### 数组的数组
-
-当数组的内部元素是基本类型数组时：
-
-```yaml
-pairs[2]:
-  - [2]: 1,2
-  - [2]: 3,4
-```
-
-每个内部数组的首部都出现在它所在的列表项那一行。
-
-当内部数组本身是对象数组或非一致数组时，同样的 `- [N]:` 首部会出现在连字符所在行，嵌套项紧随其后并再深一级缩进：
-
-```yaml
-items[3]:
-  - summary
-  - id: 1
-    name: Ada
-  - [2]:
-    - id: 2
-    - status: draft
-```
-
-### 空数组
-
-字段中的空数组渲染为 `key: []`，根级别的空数组则渲染为 `[]`：
-
-```yaml
-items: []
-```
-
-出于向后兼容的考虑，旧式的 `items[0]:` 形式在解码时仍会被支持。
-
-## 数组首部
-
-### 首部语法
-
-数组首部遵循以下模式：
-
-```
-key[N<delimiter?>]<{fields}>:
-```
-
-其中：
-
-* **N** 是非负整数长度
-* **delimiter**（可选）显式声明生效的分隔符：
-  * 不填 → 英文逗号分隔
-  * `\t`（制表符）→ 制表符分隔
-  * `|` → 竖线分隔
-* **fields**（可选，用于表格化数组）：`{field1,field2,field3}`
-
-> \[!NOTE]
-> 数组长度 `[N]` 有助于大语言模型校验结构。如果你要求模型生成 TOON 输出，显式的长度声明能让你检测出内容是否被截断或出现格式错误。
-
-### 分隔符选项
-
-TOON 支持三种分隔符：逗号（默认）、制表符和竖线。分隔符的作用范围仅限于声明它的那个数组首部。
-
-::: code-group
-
-```yaml [逗号（默认）]
-items[2]{sku,name,qty,price}:
-  A1,Widget,2,9.99
-  B2,Gadget,1,14.5
-```
-
-```yaml [制表符]
-items[2	]{sku	name	qty	price}:
-  A1	Widget	2	9.99
-  B2	Gadget	1	14.5
-```
-
-```yaml [竖线]
-items[2|]{sku|name|qty|price}:
-  A1|Widget|2|9.99
-  B2|Gadget|1|14.5
-```
-
-:::
-
-制表符和竖线分隔符会显式编码在首部的方括号和字段大括号中。在某个数组的作用范围内，只有生效的分隔符会触发引号处理——其他分隔符字符则作为字面数据处理。对象字段的值（`key: value`）遵循文档级分隔符(§11.1)，而不受周围任何数组生效分隔符的影响。
-
-> \[!TIP]
-> 制表符分隔通常比逗号分隔更高效地进行 token 化，尤其是在引号字符串较少的数据中。使用 `encode(data, { delimiter: '\t' })` 可以进一步节省 token。
-
-## 键折叠（可选）
-
-键折叠是一项可选的编码器特性（自规范 v1.5 起提供），它会将单键对象组成的链条折叠为以点分隔的路径，从而为深度嵌套的数据减少 token 消耗。
-
-### 基础折叠
-
-标准嵌套：
-
-```yaml
-data:
-  metadata:
-    items[2]: a,b
-```
-
-启用键折叠后(`keyFolding: 'safe'`)：
-
-```yaml
-data.metadata.items[2]: a,b
-```
-
-三个嵌套对象被折叠为一个以点分隔的键 `data.metadata.items`。
-
-### 折叠适用的条件
-
-一条对象链在满足以下条件时可以被折叠：
-
-* 链中的每个对象都恰好只有一个键（指向下一个对象或一个叶子值）
-* 叶子值是基本类型、数组或空对象
-* 所有片段都是合法的标识符片段（仅限字母、数字、下划线；片段内不能有点号）
-* 折叠后得到的键不会与已有的键发生冲突
-
-::: details 高级折叠规则
-**片段要求（safe 模式）：**
-
-* 所有被折叠的片段都必须匹配 `^[A-Za-z_][A-Za-z0-9_]*$`（不能包含点、连字符或其他特殊字符）
-* 任何片段都不能按规范 §7.3 加引号
-* 折叠后得到的键不能与同一深度下任何已有的同级字面键相同（避免冲突）
-
-**深度限制：**
-
-* `flattenDepth` 选项（默认：`Infinity`）控制要折叠多少个片段
-* `flattenDepth: 2` 只折叠两段的链：`{a: {b: val}}` → `a.b: val`
-* 小于 2 的值没有实际效果
-
-**通过路径展开实现往返转换：**
-若要在解码时还原原始结构，请使用 `expandPaths: 'safe'`。这会依据相同的安全规则，将带点号的键重新拆分为嵌套对象）[规范 §13.4](https://github.com/toon-format/spec/blob/main/SPEC.md#134-key-folding-and-path-expansion)）。
-:::
-
-### 通过路径展开实现往返转换
-
-在解码使用了键折叠的 TOON 时，启用路径展开以恢复嵌套结构：
-
-```ts
-import { decode, encode } from '@toon-format/toon'
-
-const original = { data: { metadata: { items: ['a', 'b'] } } }
-
-// 使用折叠进行编码
-const toon = encode(original, { keyFolding: 'safe' })
-// → "data.metadata.items[2]: a,b"
-
-// 使用展开进行解码
-const restored = decode(toon, { expandPaths: 'safe' })
-// → { data: { metadata: { items: ['a', 'b'] } } }
-```
-
-路径展开默认关闭，因此带点号的键在未显式启用该选项时会被视为字面键处理。
-
-## 引号与类型
-
-### 字符串何时需要加引号
-
-TOON **只在必要时**才为字符串加引号，以最大化 token 效率。以下情况字符串必须加引号：
-
-* 空字符串(`""`)
-* 开头或结尾是空格字符
-* 值等于 `true`、`false` 或 `null`（区分大小写）
-* 看起来像数字（例如 `"42"`、`"-3.14"`、`"1e-6"`、`"05"`）
-* 包含特殊字符：`:`、`"`、`\`、`[`、`]`、`{`、`}`，或任何控制字符（U+0000–U+001F，包括换行符/制表符/回车符）
-* 包含相关的分隔符（数组作用范围内为生效分隔符，其他情况下为文档级分隔符）
-* 值等于 `"-"`，或以 `"-"` 开头且后面还有其他字符
-
-除上述情况，字符串都可以不加引号。Unicode、emoji 以及内部（非开头/结尾）带空格的字符串都可以安全地不加引号：
-
-```yaml
-message: Hello 世界 👋
-note: This has inner spaces
-```
-
-### 转义序列
-
-带引号的字符串中允许使用六种转义字符：
-
-| 字符 | 转义 |
-|-----------|--------|
-| 反斜杠(`\`) | `\\` |
-| 双引号(`"`) | `\"` |
-| 换行符(U+000A) | `\n` |
-| 回车符(U+000D) | `\r` |
-| 制表符(U+0009) | `\t` |
-| 其他任意 U+0000–U+001F 控制字符 | `\uXXXX` |
-
-其他转义方式（例如 `\x`、`\0`、`\b`）一律会被拒绝，未配对的 UTF-16 代理码位 `\uXXXX`（U+D800–U+DFFF）同样会被拒绝。
-
-### 类型转换
-
-§2 特例范围内的数值以规范的十进制形式输出；超出该范围时可使用指数记法。非 JSON 类型（`NaN`、`Infinity`、`BigInt`、`Date`、`Set`、`Map`、`undefined` 等）在编码前会被规范化——完整的映射关系请参阅 [API 参考——类型规范化](/zh/reference/api#类型规范化)。
-
-解码器在输入时同时接受十进制和指数形式（例如 `42`、`-3.14`、`1e-6`），并将带有非法前导零的 token（例如 `"05"`）视为字符串而非数字。
-
-### 使用 toJSON 进行自定义序列化
-
-拥有 `toJSON()` 方法的对象在序列化时会先调用该方法，再对其结果进行归一化后编码，这与 `JSON.stringify` 的行为类似：
-
-```ts
-const obj = {
-  data: 'example',
-  toJSON() {
-    return { info: this.data }
-  }
-}
-
-encode(obj)
-// info: example
-```
-
-`toJSON()` 方法：
-
-* 优先于内置的归一化处理(Date、Array、Set、Map)
-* 其结果会被递归地归一化
-* 只要对象的原型链中存在 `toJSON`，就会被调用
-
-***
-
-关于引号、转义、类型转换以及严格模式解码的完整规则，请参阅 [规范 §2–4(数据模型)、§7(字符串与键)以及 §14(严格模式)](https://github.com/toon-format/spec/blob/main/SPEC.md)。
-
----
-
----
-url: /zh/reference/spec.md
-description: TOON 规范导览：章节结构、合规性检查清单、媒体类型和版本管理。
----
-
-# 规范
-
-[TOON 规范](https://github.com/toon-format/spec) 是实现编码器、解码器和校验器的权威参考。它定义了具体语法、规范性的编码/解码行为，以及严格模式下的校验规则。
-
-如果只是*使用* TOON，无需阅读本页；本页主要面向实现者和贡献者。如果你想学习如何使用 TOON，请从 [快速开始](/zh/guide/getting-started) 指南入手。
-
-> \[!NOTE]
-> TOON 规范已经稳定，但仍在持续演进中。规范并非一成不变，欢迎通过贡献内容或分享反馈来参与其后续发展。
-
-## 当前版本
-
-**规范 v{{ $spec.version }}**（2026-05-20）是当前已发布的工作草案。该版本已足够稳定并可作为实现依据，但尚未定稿；详情请参阅规范中的 “Status of This Document” 部分。
-
-## 媒体类型与文件扩展名
-
-规范在 [§17](https://github.com/toon-format/spec/blob/main/SPEC.md#17-iana-considerations) 中定义了临时媒体类型和文件扩展名：
-
-* **媒体类型：** `text/toon`（临时，尚未在 IANA 注册；仅支持 UTF-8）
-* **文件扩展名：** `.toon`
-
-TOON 文档始终使用 UTF-8 编码和 LF（`\n`）换行符；可选的 `charset` 参数如果存在，其值为 `utf-8`。
-
-## 规范导览
-
-### 核心概念
-
-[§1 术语与约定](https://github.com/toon-format/spec/blob/main/SPEC.md#1-terminology-and-conventions)：
-定义了“缩进层级”“生效分隔符”“严格模式”等关键术语，以及 RFC2119 关键词（MUST、SHOULD、MAY）。
-
-[§2 数据模型](https://github.com/toon-format/spec/blob/main/SPEC.md#2-data-model)：
-规定了 JSON 数据模型（对象、数组、基本类型）、数组和对象的顺序要求，以及规范数字格式（位于 `[1e-6, 1e21)` 范围内或为零的值使用规范十进制；超出该范围允许使用指数记法）。
-
-[§3 编码规范化](https://github.com/toon-format/spec/blob/main/SPEC.md#3-encoding-normalization-reference-encoder)：
-定义了非 JSON 类型（Date、BigInt、NaN、Infinity、undefined 等）在编码前应如何规范化。编码器实现者应重点阅读这一节。
-
-[§4 解码解释](https://github.com/toon-format/spec/blob/main/SPEC.md#4-decoding-interpretation-reference-decoder)：
-规定了解码器如何将文本标记映射为宿主语言中的值（带引号的字符串、不带引号的基本类型，以及解析数字时对前导零的处理）。在参考实现中，解码器默认启用严格模式（`strict = true`）；严格模式错误见 §14。
-
-### 语法规则
-
-[§5 具体语法与根形式](https://github.com/toon-format/spec/blob/main/SPEC.md#5-concrete-syntax-and-root-form)：
-定义了 TOON 这种面向行、基于缩进的表示法，并说明如何判断根值是对象、数组还是基本类型。
-
-[§6 首部语法](https://github.com/toon-format/spec/blob/main/SPEC.md#6-header-syntax-normative)：
-给出数组首部的规范性 ABNF 语法：`key[N<delim?>]{fields}:`。该节规定了方括号片段、分隔符符号和字段列表。
-
-[§7 字符串与键](https://github.com/toon-format/spec/blob/main/SPEC.md#7-strings-and-keys)：
-完整的引号规则（字符串何时必须加引号）、合法转义序列（仅包括 `\\`、`\"`、`\n`、`\r`、`\t`，以及用于其他 U+0000–U+001F 控制字符的 `\uXXXX`），以及键的编码要求。
-
-[§8 对象](https://github.com/toon-format/spec/blob/main/SPEC.md#8-objects)：
-对象字段编码（`key: value`）、嵌套规则、键顺序保留，以及空对象处理。
-
-[§9 数组](https://github.com/toon-format/spec/blob/main/SPEC.md#9-arrays)：
-涵盖所有数组形式：基本类型数组（内联）、对象数组（表格化）、混合数组/非一致数组（列表），以及数组的数组。该节还包括表格化检测要求。
-
-[§10 作为列表项的对象](https://github.com/toon-format/spec/blob/main/SPEC.md#10-objects-as-list-items)：
-列表项中对象的缩进规则（第一个字段位于连字符所在行），包括第一个字段为表格化数组时的规范模式（首部位于连字符所在行，行数据缩进深度为 +2，同级字段缩进深度为 +1）。
-
-[§11 分隔符](https://github.com/toon-format/spec/blob/main/SPEC.md#11-delimiters)：
-分隔符作用域（文档级分隔符与生效分隔符）、基于分隔符的引号处理，以及逗号、制表符、竖线分隔符的解析规则。
-
-[§12 缩进与空白](https://github.com/toon-format/spec/blob/main/SPEC.md#12-indentation-and-whitespace)：
-编码要求（一致的空格缩进、缩进中不允许使用制表符、无行尾空格/换行符）以及解码规则（严格和非严格缩进处理）。
-
-### 合规性与校验
-
-[§13 合规性与选项](https://github.com/toon-format/spec/blob/main/SPEC.md#13-conformance-and-options)：
-定义了合规类型（编码器、解码器、校验器）、标准化选项以及合规检查清单。
-
-[§13.4 键折叠与路径展开](https://github.com/toon-format/spec/blob/main/SPEC.md#134-key-folding-and-path-expansion)：
-可选的编码器特性（键折叠）和解码器特性（路径展开），用于折叠/展开带点号的路径；该节还包含深度合并语义，以及严格/非严格模式下的冲突解决方式。
-
-[§14 严格模式下的错误与诊断](https://github.com/toon-format/spec/blob/main/SPEC.md#14-strict-mode-errors-and-diagnostics-authoritative-checklist)：
-严格模式下各类错误的**权威检查清单**：数组数量与宽度不匹配（§14.1）、语法和结构错误（§14.2）、路径展开冲突（§14.3），以及重复的同级键（§14.4）。
-
-### 实现指导
-
-[§15 安全考量](https://github.com/toon-format/spec/blob/main/SPEC.md#15-security-considerations)：
-与安全相关的注入风险、引号规则和严格模式检查。
-
-[§16 国际化](https://github.com/toon-format/spec/blob/main/SPEC.md#16-internationalization)：
-Unicode 处理，以及不受语言环境影响的数字文本格式。
-
-[§17 IANA 考量](https://github.com/toon-format/spec/blob/main/SPEC.md#17-iana-considerations)：
-媒体类型注册计划及临时状态。
-
-[§18 版本管理与可扩展性](https://github.com/toon-format/spec/blob/main/SPEC.md#18-versioning-and-extensibility)：
-规范的演进方式：主版本和次版本变更，以及可扩展性策略。
-
-[§19 知识产权考量](https://github.com/toon-format/spec/blob/main/SPEC.md#19-intellectual-property-considerations)：
-规范的许可和知识产权条款。
-
-[附录 F：宿主类型规范化示例](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-f-host-type-normalization-examples-informative)：
-为 Go、JavaScript、Python、Rust 和 Java 实现提供参考说明，介绍各语言特有类型的规范化方式。
-
-[附录 C：测试套件与合规性](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-c-test-suite-and-compliance-informative)：
-位于 [github.com/toon-format/spec/tree/main/tests](https://github.com/toon-format/spec/tree/main/tests) 的参考测试套件，可用于校验各实现。
-
-## 规范章节一览
-
-| 章节 | 主题 | 何时阅读 |
-|---------|-------|--------------|
-| §1–4 | 数据模型、规范化、解码 | 实现编码器/解码器时 |
-| §5–6 | 语法、首部、根形式 | 实现解析器时 |
-| §7 | 字符串、键、引号、转义 | 实现字符串处理时 |
-| §8–10 | 对象、数组、列表项 | 实现结构编码时 |
-| §11–12 | 分隔符、缩进、空白 | 实现格式化与校验时 |
-| §13 | 合规性、选项、键折叠/路径展开 | 实现选项与特性时 |
-| §14 | 严格模式错误 | 实现校验器时 |
-| §15–16 | 安全、国际化 | 运行和部署时的注意事项 |
-| §17–19 | IANA、版本管理、知识产权 | 生态与许可 |
-
-## 合规性检查清单
-
-规范包含三份合规性检查清单：
-
-### 编码器检查清单（§13.1） [↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#131-encoder-conformance-checklist)
-
-关键要求：
-
-* 生成 UTF-8 编码、LF 换行符的输出
-* 使用一致的缩进（默认 2 个空格，不使用制表符）
-* 在带引号的字符串中转义 `\\`、`\"`、`\n`、`\r`、`\t`，对其他任意 U+0000–U+001F 控制字符使用 `\uXXXX`；拒绝未配对的 UTF-16 代理码位
-* 对包含生效分隔符、冒号或结构性字符的字符串加引号
-* 输出与实际数量一致的数组长度 `[N]`
-* 保留对象键的顺序
-* 按 §2 输出数字（对于 `[1e-6, 1e21)` 范围内或为零的值使用规范十进制；超出该范围允许使用指数记法）
-* 将 `-0` 转换为 `0`，将 `NaN`/±Infinity 转换为 `null`
-* 以小写字面量形式输出布尔值和 null（`true`、`false`、`null`）
-* 不得包含行尾空格或末尾换行符
-* 启用 `keyFolding="safe"` 时，折叠必须遵循 §13.4：
-  * 只折叠合法标识符片段的键（字母/数字/下划线，不含点号），
-  * 不得与现有的同级键产生冲突，
-  * 不得折叠需要加引号的片段。
-* 设置了 `flattenDepth` 时，折叠必须在配置的片段数处停止（§13.4）。
-
-### 解码器检查清单（§13.2） [↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#132-decoder-conformance-checklist)
-
-关键要求：
-
-* 按 §6 解析数组首部（长度、分隔符、字段）
-* 仅使用生效分隔符拆分内联数组和表格化行
-* 只使用合法转义对带引号的字符串进行反转义
-* 为不带引号的值判定类型：true/false/null → 布尔值/null，数字 → 数字，其他 → 字符串
-* 在 `strict=true` 时强制执行严格模式规则
-* 保留数组顺序和对象键顺序
-* 启用 `expandPaths="safe"` 时，按 §13.4 将带点号的键展开为嵌套对象：
-  * 按 `.` 拆分，仅当所有片段均为合法标识符片段时才进行展开，
-  * 对重叠的路径进行深度合并（对象 + 对象），
-  * 不对数组执行按元素的合并。
-* 当 `expandPaths="safe"` 且 `strict=true`（默认）时，遇到任何展开冲突都必须报错（§14.3）。
-* 当 `expandPaths="safe"` 且 `strict=false` 时，必须采用确定性的“最后写入者优先”（LWW）冲突解决方式（§13.4）。
-
-### 校验器检查清单（§13.3） [↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#133-validator-conformance-checklist)
-
-校验器应当验证：
-
-* 结构性合规（首部、缩进、列表标记）
-* 空白不变式（无行尾空格/换行符）
-* 首部与行数据之间的分隔符一致性
-* 实际数组长度与声明的 `[N]` 相符
-* 所有严格模式要求（包括启用时的路径展开冲突）
-
-## 版本管理
-
-规范使用语义化版本（主版本号、次版本号）：
-
-* **主版本**（例如 v2 → v3）：破坏性变更，与之前版本不兼容
-* **次版本**（例如 v3.1 → v3.2）：澄清说明、新增要求，或向后兼容的补充内容
-
-详细的版本历史请参阅 [附录 D：文档变更日志](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-d-document-changelog-informative)。
-
-## 为规范做贡献
-
-该规范由社区在 [github.com/toon-format/spec](https://github.com/toon-format/spec) 上维护。我们欢迎各种形式的贡献：报告歧义或错误、提出澄清说明和示例、向参考测试套件添加测试用例，或讨论边界情况和规范性行为。你的反馈有助于推动这一格式的发展。
-
----
-
----
-url: /zh/reference/syntax-cheatsheet.md
-description: 快速了解 JSON 到 TOON 的映射关系，包括对象、数组、引号、键折叠和类型转换。
----
-
-# 语法速查表
-
-本页提供将 JSON 映射为 TOON 格式的语法速查表。若需要了解完整的语法规则和边界情况，请参阅 [规范](/zh/reference/spec)。
-
-## 对象
-
-::: code-group
-
-```json [JSON]
-{
-  "id": 1,
-  "name": "Ada"
-}
-```
-
-```yaml [TOON]
-id: 1
-name: Ada
-```
-
-:::
-
-## 嵌套对象
-
-::: code-group
-
-```json [JSON]
-{
-  "user": {
-    "id": 1,
-    "name": "Ada"
-  }
-}
-```
-
-```yaml [TOON]
-user:
-  id: 1
-  name: Ada
-```
-
-:::
-
-## 基本类型数组
-
-::: code-group
-
-```json [JSON]
-{
-  "tags": ["foo", "bar", "baz"]
-}
-```
-
-```yaml [TOON]
-tags[3]: foo,bar,baz
-```
-
-:::
-
-## 表格化数组
-
-::: code-group
-
-```json [JSON]
-{
-  "items": [
-    { "id": 1, "qty": 5 },
-    { "id": 2, "qty": 3 }
-  ]
-}
-```
-
-```yaml [TOON]
-items[2]{id,qty}:
-  1,5
-  2,3
-```
-
-:::
-
-## 混合数组和非一致数组
-
-::: code-group
-
-```json [JSON]
-{
-  "items": [1, { "a": 1 }, "x"]
-}
-```
-
-```yaml [TOON]
-items[3]:
-  - 1
-  - a: 1
-  - x
-```
-
-:::
-
-> \[!NOTE]
-> 当列表项对象的第一个字段是表格化数组时，表格化首部会出现在连字符所在行。行数据相对于连字符多缩进两级，其他字段多缩进一级。这是该模式的规范编码方式。
-
-::: code-group
-
-```yaml [多字段对象]
-items[1]:
-  - users[2]{id,name}:
-      1,Ada
-      2,Bob
-    status: active
-```
-
-```yaml [单字段对象]
-items[1]:
-  - users[2]{id,name}:
-      1,Ada
-      2,Bob
-```
-
-:::
-
-## 数组的数组
-
-::: code-group
-
-```json [JSON]
-{
-  "pairs": [[1, 2], [3, 4]]
-}
-```
-
-```yaml [TOON]
-pairs[2]:
-  - [2]: 1,2
-  - [2]: 3,4
-```
-
-:::
-
-## 根数组
-
-::: code-group
-
-```json [JSON]
-["x", "y", "z"]
-```
-
-```yaml [TOON]
-[3]: x,y,z
-```
-
-:::
-
-## 空容器
-
-::: code-group
-
-```json [空对象]
-{}
-```
-
-```yaml [空对象]
-(空输出)
-```
-
-:::
-
-::: code-group
-
-```json [空数组]
-{
-  "items": []
-}
-```
-
-```yaml [空数组]
-items: []
-```
-
-:::
-
-## 必须使用引号的特殊情况
-
-### 看起来像字面量的字符串
-
-::: code-group
-
-```json [JSON]
-{
-  "version": "123",
-  "enabled": "true"
-}
-```
-
-```yaml [TOON]
-version: "123"
-enabled: "true"
-```
-
-:::
-
-这些字符串必须加引号，因为它们看起来像数字/布尔值。
-
-### 包含分隔符的字符串
-
-::: code-group
-
-```json [JSON]
-{
-  "note": "hello, world"
-}
-```
-
-```yaml [TOON]
-note: "hello, world"
-```
-
-:::
-
-当字符串包含相关分隔符时，必须加引号：在数组作用域内为生效分隔符；在对象字段值中为文档级分隔符（默认为逗号）。
-
-### 带开头/结尾空格的字符串
-
-::: code-group
-
-```json [JSON]
-{
-  "message": " padded "
-}
-```
-
-```yaml [TOON]
-message: " padded "
-```
-
-:::
-
-### 空字符串
-
-::: code-group
-
-```json [JSON]
-{
-  "name": ""
-}
-```
-
-```yaml [TOON]
-name: ""
-```
-
-:::
-
-## 引号规则汇总
-
-在以下情况下，字符串**必须**加引号：
-
-* 空字符串（`""`）
-* 开头或结尾是空格字符
-* 值等于 `true`、`false` 或 `null`（区分大小写）
-* 看起来像数字（例如 `"42"`、`"-3.14"`、`"1e-6"`、`"05"`）
-* 包含特殊字符：`:`、`"`、`\`、`[`、`]`、`{`、`}`，或任何控制字符（U+0000–U+001F，包括换行符/制表符/回车符）
-* 包含相关的分隔符（数组作用范围内为生效分隔符，其他情况下为文档级分隔符）
-* 值等于 `"-"`，或以 `"-"` 开头且后面还有其他字符
-
-除上述情况，字符串都可以不加引号。Unicode、emoji 以及内部（非开头/结尾）带空格的字符串都可以安全地不加引号：
-
-```yaml
-message: Hello 世界 👋
-note: This has inner spaces
-```
-
-## 转义序列
-
-带引号的字符串中允许使用六种转义字符：
-
-| 字符 | 转义 |
-|-----------|--------|
-| 反斜杠（`\`） | `\\` |
-| 双引号（`"`） | `\"` |
-| 换行符(U+000A) | `\n` |
-| 回车符(U+000D) | `\r` |
-| 制表符(U+0009) | `\t` |
-| 其他任意 U+0000–U+001F 控制字符 | `\uXXXX` |
-
-其他转义方式（例如 `\x`、`\0`、`\b`）一律会被拒绝，未配对的 UTF-16 代理码位 `\uXXXX`（U+D800–U+DFFF）同样会被拒绝。
-
-## 数组首部
-
-### 基础首部
-
-```
-key[N]:
-```
-
-* `N` = 数组长度
-* 默认分隔符：逗号
-
-### 表格化首部
-
-```
-key[N]{field1,field2,field3}:
-```
-
-* `N` = 数组长度
-* `{fields}` = 列名
-* 默认分隔符：逗号
-
-### 备选分隔符
-
-::: code-group
-
-```yaml [制表符分隔]
-items[2	]{id	name}:
-  1	Alice
-  2	Bob
-```
-
-```yaml [竖线分隔]
-items[2|]{id|name}:
-  1|Alice
-  2|Bob
-```
-
-:::
-
-分隔符符号会出现在方括号和花括号内。
-
-## 键折叠（可选）
-
-标准嵌套：
-
-```yaml
-data:
-  metadata:
-    items[2]: a,b
-```
-
-启用键折叠后(`keyFolding: 'safe'`)：
-
-```yaml
-data.metadata.items[2]: a,b
-```
-
-详情请参阅 [格式概览——键折叠](/zh/guide/format-overview#键折叠-可选)。
-
-## 类型转换
-
-| 输入 | 输出 |
-|-------|--------|
-| 位于 `[1e-6, 1e21)` 区间内的有限数值，或零 | 规范的十进制形式 |
-| 超出该范围的有限数字 | 允许使用指数记法 |
-| `NaN`、`Infinity`、`-Infinity` | `null` |
-| `BigInt`（可无精度损失地转换为 Number） | Number |
-| `BigInt`（不可无损转换） | 带引号的十进制字符串（例如 `"9007199254740993"`） |
-| `Date` | 带引号的 ISO 字符串（例如 `"2025-01-01T00:00:00.000Z"`） |
-| `Set` | 规范化后的值组成的数组 |
-| `Map` | 以 `String(key)` 为键的对象 |
-| `undefined`、`function`、`symbol` | `null` |
-
-::: info
-TOON 本身并未规定 `Date` 应如何编码——规范将其留给具体实现决定。本库以带引号的 ISO 8601 字符串形式输出；其他实现可能会有不同的选择。
-:::
