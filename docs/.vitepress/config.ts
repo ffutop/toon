@@ -6,7 +6,8 @@ import { description, github, name, ogImage, ogUrl, releases, twitterImage, vers
 
 export default defineConfig({
   title: name,
-  description,
+  description: '面向 Token 的对象表示法',
+  lang: 'zh-CN',
   sitemap: {
     hostname: ogUrl,
   },
@@ -51,6 +52,8 @@ export default defineConfig({
       label: 'English',
       lang: 'en',
       link: '/en/',
+      title: name,
+      description,
       themeConfig: {
         nav: navEn(),
         sidebar: {
@@ -65,45 +68,11 @@ export default defineConfig({
         },
       },
     },
-    root: {
-      label: '简体中文',
-      lang: 'zh-CN',
-      link: '/',
-      title: name,
-      description: '面向 Token 的对象表示法',
-      themeConfig: {
-        nav: navZh(),
-        sidebar: {
-          '/zh/guide/': sidebarZh(),
-          '/zh/cli/': sidebarZh(),
-          '/zh/reference/': sidebarZh(),
-          '/zh/ecosystem/': sidebarZh(),
-        },
-        footer: {
-          message: '基于 <a href="https://opensource.org/licenses/MIT" target="_blank">MIT 许可证</a>发布。',
-          copyright: 'Copyright © 2025-PRESENT <a href="https://johannschopplich.com" target="_blank">Johann Schopplich</a> <br>中文文档由 <a href="https://www.ffutop.com">ffutop</a> 翻译维护。',
-        },
-        docFooter: {
-          prev: '上一页',
-          next: '下一页',
-        },
-        outline: {
-          label: '本页目录',
-        },
-        lastUpdated: {
-          text: '最后更新于',
-        },
-        langMenuLabel: '切换语言',
-        returnToTopLabel: '回到顶部',
-        sidebarMenuLabel: '菜单',
-        darkModeSwitchLabel: '外观',
-        lightModeSwitchTitle: '切换到浅色模式',
-        darkModeSwitchTitle: '切换到深色模式',
-      },
-    },
+    zh: localeZh('/zh/'),
   } satisfies LocaleConfig<DefaultTheme.Config>,
 
   themeConfig: {
+    ...themeConfigZh(),
     logo: '/favicon.svg',
 
     socialLinks: [
@@ -158,6 +127,49 @@ export default defineConfig({
     await writeFile(enIndex, html)
   },
 })
+
+function localeZh(link: string) {
+  return {
+    label: '简体中文',
+    lang: 'zh-CN',
+    link,
+    title: name,
+    description: '面向 Token 的对象表示法',
+    themeConfig: themeConfigZh(),
+  }
+}
+
+function themeConfigZh(): DefaultTheme.Config {
+  return {
+    nav: navZh(),
+    sidebar: {
+      '/zh/guide/': sidebarZh(),
+      '/zh/cli/': sidebarZh(),
+      '/zh/reference/': sidebarZh(),
+      '/zh/ecosystem/': sidebarZh(),
+    },
+    footer: {
+      message: '基于 <a href="https://opensource.org/licenses/MIT" target="_blank">MIT 许可证</a>发布。',
+      copyright: 'Copyright © 2025-PRESENT <a href="https://johannschopplich.com" target="_blank">Johann Schopplich</a> <br>中文文档由 <a href="https://www.ffutop.com">ffutop</a> 翻译维护。',
+    },
+    docFooter: {
+      prev: '上一页',
+      next: '下一页',
+    },
+    outline: {
+      label: '本页目录',
+    },
+    lastUpdated: {
+      text: '最后更新于',
+    },
+    langMenuLabel: '切换语言',
+    returnToTopLabel: '回到顶部',
+    sidebarMenuLabel: '菜单',
+    darkModeSwitchLabel: '外观',
+    lightModeSwitchTitle: '切换到浅色模式',
+    darkModeSwitchTitle: '切换到深色模式',
+  }
+}
 
 function navEn(): DefaultTheme.NavItem[] {
   return [
