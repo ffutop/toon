@@ -1,20 +1,20 @@
 ---
 url: /zh/ecosystem/implementations.md
-description: '跨语言的官方与社区 TOON 实现,以及贡献指引。'
+description: 跨语言的官方与社区 TOON 实现，以及贡献指引。
 ---
 
 # 实现列表
 
-TOON 在多种编程语言中拥有官方与社区实现。所有实现都力求遵循同一份 [规范](https://github.com/toon-format/spec),以确保兼容性和互操作性。
+TOON 在多种编程语言中拥有官方与社区实现。所有实现都力求遵循同一份 [规范](https://github.com/toon-format/spec)，以确保兼容性和互操作性。
 
-本文档站点中的代码示例默认使用 TypeScript 实现,但相关格式和概念同样适用于所有语言。
+本文档站点中的代码示例默认使用 TypeScript 实现，但相关格式和概念同样适用于所有语言。
 
 > \[!NOTE]
-> 在其他语言中实现 TOON 时,请遵循 [规范](https://github.com/toon-format/spec/blob/main/SPEC.md) 以确保各实现之间的兼容性。[合规性测试](https://github.com/toon-format/spec/tree/main/tests) 提供了与语言无关的测试用例,用于校验你的实现。
+> 在其他语言中实现 TOON 时，请遵循 [规范](https://github.com/toon-format/spec/blob/main/SPEC.md) 以确保各实现之间的兼容性。[一致性测试](https://github.com/toon-format/spec/tree/main/tests) 提供了与语言无关的测试用例，用于校验你的实现。
 
 ## 官方实现
 
-以下实现由专门团队积极维护。欢迎参与贡献!你可以在相应仓库中提交 issue、发起 PR,或讨论实现细节。
+以下实现由专门团队积极维护。欢迎参与贡献！你可以在相应仓库中提交 issue、发起 PR，或讨论实现细节。
 
 | 语言 | 仓库 | 状态 | 维护者 |
 |----------|------------|--------|------------|
@@ -30,7 +30,7 @@ TOON 在多种编程语言中拥有官方与社区实现。所有实现都力求
 
 ## 社区实现
 
-社区成员为其他语言创建了以下实现:
+社区成员为其他语言创建了以下实现：
 
 | 语言 | 仓库 | 维护者 |
 |----------|------------|------------|
@@ -52,8 +52,8 @@ TOON 在多种编程语言中拥有官方与社区实现。所有实现都力求
 | **OCaml** | [ocaml-toon](https://github.com/davesnx/ocaml-toon) | [@davesnx](https://github.com/davesnx) |
 | **Perl** | [Data::TOON](https://github.com/ytnobody/p5-Data-TOON) | [@ytnobody](https://github.com/ytnobody) |
 | **PHP** | [toon-php](https://github.com/HelgeSverre/toon-php) | [@HelgeSverre](https://github.com/HelgeSverre) |
-| **Python**(C++ 后端) | [ctoon](https://github.com/mohammadraziei/ctoon) | [@mohammadraziei](https://github.com/mohammadraziei) |
-| **Python**(Rust 后端) | [toons](https://github.com/alesanfra/toons) | [@alesanfra](https://github.com/alesanfra) |
+| **Python**（C++ 后端） | [ctoon](https://github.com/mohammadraziei/ctoon) | [@mohammadraziei](https://github.com/mohammadraziei) |
+| **Python**（Rust 后端） | [toons](https://github.com/alesanfra/toons) | [@alesanfra](https://github.com/alesanfra) |
 | **R** | [toon](https://github.com/laresbernardo/toon) | [@laresbernardo](https://github.com/laresbernardo) |
 | **Ruby** | [toon-ruby](https://github.com/andrepcg/toon-ruby) | [@andrepcg](https://github.com/andrepcg) |
 | **Scala** | [toon4s](https://github.com/vim89/toon4s) | [@vim89](https://github.com/vim89) |
@@ -61,9 +61,9 @@ TOON 在多种编程语言中拥有官方与社区实现。所有实现都力求
 
 ## 贡献一个新的实现
 
-想为某个新的语言构建 TOON 实现吗?太棒了!以下是入门的一些步骤:
+想为某个新的语言构建 TOON 实现吗？太棒了！以下是入门的一些步骤：
 
-1. **遵循规范**:实现 [最新规范](https://github.com/toon-format/spec/blob/main/SPEC.md)。
-2. **添加测试**:运行 [参考测试套件](https://github.com/toon-format/spec/tree/main/tests)。
-3. **编写使用文档**:提供一份清晰的 README,包含安装和使用示例。
-4. **分享出来**:提交一个 PR,将你的实现添加到 [github.com/toon-format/toon](https://github.com/toon-format/toon) 的 README 中。
+1. **遵循规范**：实现 [最新规范](https://github.com/toon-format/spec/blob/main/SPEC.md)。
+2. **添加测试**：运行 [一致性测试套件](https://github.com/toon-format/spec/tree/main/tests)。
+3. **编写使用文档**：提供一份清晰的 README，包含安装和使用示例。
+4. **分享出来**：提交一个 PR，将你的实现添加到 [github.com/toon-format/toon](https://github.com/toon-format/toon) 的 README 中。
