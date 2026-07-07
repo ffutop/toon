@@ -13,9 +13,7 @@ export default defineConfig({
   },
 
   rewrites: {
-    // Chinese homepage becomes the site root
-    'zh/index.md': 'index.md',
-    // English content moves to /en/ prefix
+    // English content moves to /en/ prefix; Chinese stays at /zh/ (its natural path)
     'index.md': 'en/index.md',
     'guide/:page': 'en/guide/:page',
     'cli/:page': 'en/cli/:page',
@@ -45,7 +43,24 @@ export default defineConfig({
 
   vite: {
     // @ts-expect-error – UnoCSS types are not compatible with Vite yet
-    plugins: [UnoCSS(), llmstxt()],
+    plugins: [
+      UnoCSS(),
+      llmstxt(),
+      // Redirect bare / to /zh/ in dev; production uses the index.html written by buildEnd.
+      {
+        name: 'root-to-zh-redirect',
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            if (req.url === '/' || req.url === '/index.html') {
+              res.writeHead(302, { Location: '/zh/' })
+              res.end()
+              return
+            }
+            next()
+          })
+        },
+      },
+    ],
   },
 
   locales: {
