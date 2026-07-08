@@ -1,8 +1,6 @@
 # TOON
 
-> 面向 Token 的<br>对象表示法
-
-一种为 LLM 提示词设计的、紧凑且人类可读的 <br>JSON 数据模型编码方式。
+> 面向 Token 的对象表示法
 
 ## Table of Contents
 
@@ -116,3 +114,4 @@
 - [Tools and Playgrounds](/en/ecosystem/tools-and-playgrounds.md): TOON playgrounds, CLI, editor support, and ecosystem tools.
 - [TOON vs JSON: Byte-Level Efficiency Model](/en/reference/efficiency-formalization.md): Mathematical model of TOON's byte-level overhead vs JSON across structure families, with formulas and worked examples.
 - [Using TOON with LLMs](/en/guide/llm-prompts.md): Prompting strategies for sending TOON to LLMs and validating TOON they generate, with examples.
+- [面向 Token 的对象表示法](/zh.md)

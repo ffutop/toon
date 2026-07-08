@@ -7536,3 +7536,10 @@ events[2	]{id	level	message	timestamp}:
 const filtered = decode(modelResponse, { strict: true })
 // ✓ Validated – model correctly filtered and adjusted [N] to 2
 ```
+
+---
+
+---
+url: /zh.md
+---
+
