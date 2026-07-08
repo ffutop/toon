@@ -20,6 +20,10 @@ export default defineConfig({
     'reference/:page': 'en/reference/:page',
     'ecosystem/:page': 'en/ecosystem/:page',
     'playground.md': 'en/playground.md',
+    // home-zh.md is a build-time generated copy of zh/index.md (see
+    // .vitepress/scripts/generate-home.mjs), rewritten to the site root so
+    // `vitepress-plugin-llms` has a page mapped to `index.md` to key off of.
+    'home-zh.md': 'index.md',
   },
 
   head: [
@@ -42,11 +46,11 @@ export default defineConfig({
   ],
 
   vite: {
-    // @ts-expect-error – UnoCSS types are not compatible with Vite yet
     plugins: [
       UnoCSS(),
       llmstxt(),
-      // Redirect bare / to /zh/ in dev; production uses the index.html written by buildEnd.
+      // Redirect bare / to /zh/ in dev; production is handled by buildEnd,
+      // which overwrites the generated root index.html with a redirect page.
       {
         name: 'root-to-zh-redirect',
         configureServer(server) {
@@ -141,6 +145,25 @@ export default defineConfig({
     }
     html = html.replaceAll('href="/playground', 'href="/en/playground')
     await writeFile(enIndex, html)
+
+    // The root index.html is generated from home-zh.md (a build-time copy of
+    // zh/index.md, see .vitepress/scripts/generate-home.mjs) only so that
+    // vitepress-plugin-llms has a page mapped to index.md to key off of.
+    // The intended behavior is for / to redirect to /zh/, so replace it with
+    // a redirect page instead of shipping a duplicate Chinese homepage.
+    const rootIndex = join(siteConfig.outDir, 'index.html')
+    await writeFile(rootIndex, [
+      '<!DOCTYPE html>',
+      '<html lang="zh-CN">',
+      '<head>',
+      '<meta charset="utf-8">',
+      '<meta http-equiv="refresh" content="0; url=/zh/">',
+      '<script>location.replace(\'/zh/\')</script>',
+      '</head>',
+      '<body><a href="/zh/">跳转中...</a></body>',
+      '</html>',
+      '',
+    ].join('\n'))
   },
 })
 
