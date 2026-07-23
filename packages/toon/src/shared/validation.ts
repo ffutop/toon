@@ -1,7 +1,7 @@
-import { DEFAULT_DELIMITER, LIST_ITEM_MARKER } from '../constants.ts'
+import { COMMENT_MARKER, DEFAULT_DELIMITER, LIST_ITEM_MARKER } from '../constants.ts'
 import { isBooleanOrNullLiteral } from './literal-utils.ts'
 
-const NUMERIC_LIKE_PATTERN = /^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i
+const NUMERIC_LIKE_PATTERN = /^[+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i
 const LEADING_ZERO_PATTERN = /^0\d+$/
 
 /**
@@ -13,19 +13,6 @@ const LEADING_ZERO_PATTERN = /^0\d+$/
  */
 export function isValidUnquotedKey(key: string): boolean {
   return /^[A-Z_][\w.]*$/i.test(key)
-}
-
-/**
- * Checks if a key segment is a valid identifier for safe folding/expansion.
- *
- * @remarks
- * Identifier segments are more restrictive than unquoted keys:
- * - Must start with a letter or underscore
- * - Followed only by letters, digits, or underscores (no dots)
- * - Used for safe key folding and path expansion
- */
-export function isIdentifierSegment(key: string): boolean {
-  return /^[A-Z_]\w*$/i.test(key)
 }
 
 /**
@@ -41,6 +28,7 @@ export function isIdentifierSegment(key: string): boolean {
  * - Contains control characters (newlines, tabs, etc.)
  * - Contains the active delimiter
  * - Starts with a list marker (hyphen)
+ * - Starts with a comment marker (#)
  */
 export function isSafeUnquoted(value: string, delimiter: string = DEFAULT_DELIMITER): boolean {
   if (!value) {
@@ -84,6 +72,11 @@ export function isSafeUnquoted(value: string, delimiter: string = DEFAULT_DELIMI
 
   // Check for hyphen at start (list marker)
   if (value.startsWith(LIST_ITEM_MARKER)) {
+    return false
+  }
+
+  // Check for comment marker at start (would read as a comment line)
+  if (value.startsWith(COMMENT_MARKER)) {
     return false
   }
 

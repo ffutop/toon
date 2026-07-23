@@ -1,11 +1,11 @@
-import type { ArrayHeaderInfo, DecodeStreamOptions, Depth, JsonPrimitive, JsonStreamEvent, ParsedLine } from '../types.ts'
+import type { ArrayHeaderInfo, DecodeStreamOptions, Depth, FieldNode, JsonPrimitive, JsonStreamEvent, ParsedLine } from '../types.ts'
 import type { StreamingScanState } from './scanner.ts'
 import { COLON, DEFAULT_DELIMITER, LIST_ITEM_MARKER, LIST_ITEM_PREFIX } from '../constants.ts'
-import { findClosingQuote } from '../shared/string-utils.ts'
+import { findClosingQuote, findUnquotedChar, trimSpaces } from '../shared/string-utils.ts'
 import { ToonDecodeError, withLine } from './errors.ts'
-import { isArrayHeaderContent, isKeyValueContent, mapRowValuesToPrimitives, parseArrayHeaderLine, parseDelimitedValues, parseKeyToken, parsePrimitiveToken } from './parser.ts'
+import { countLeafFields, isArrayHeaderContent, isKeyValueContent, mapRowValuesToPrimitives, parseArrayHeaderLine, parseDelimitedValues, parseKeyToken, parsePrimitiveToken } from './parser.ts'
 import { createScanState, parseLinesAsync, parseLinesSync } from './scanner.ts'
-import { assertExpectedCount, validateNoBlankLinesInRange, validateNoExtraListItems, validateNoExtraTabularRows } from './validation.ts'
+import { assertExpectedCount, isDataRow, validateNoBlankLinesInRange, validateNoExtraListItems, validateNoExtraTabularRows } from './validation.ts'
 
 interface DecoderContext { indent: number, strict: boolean }
 
@@ -117,11 +117,6 @@ export function* decodeStreamSync(
   source: Iterable<string>,
   options?: DecodeStreamOptions,
 ): Generator<JsonStreamEvent> {
-  // Validate options
-  if (options?.expandPaths !== undefined) {
-    throw new Error('expandPaths is not supported in streaming decode')
-  }
-
   const resolvedOptions: DecoderContext = {
     indent: options?.indent ?? 2,
     strict: options?.strict ?? true,
@@ -140,10 +135,11 @@ export function* decodeStreamSync(
     return
   }
 
-  if (first.content.trim() === '[]') {
+  if (trimSpaces(first.content) === '[]') {
     cursor.advanceSync()
     yield { type: 'startArray', length: 0 }
     yield { type: 'endArray' }
+    assertFullyConsumedSync(cursor, resolvedOptions.strict)
     return
   }
 
@@ -153,6 +149,7 @@ export function* decodeStreamSync(
     if (headerInfo) {
       cursor.advanceSync()
       yield* decodeArrayFromHeaderSync(headerInfo.header, headerInfo.inlineValues, cursor, 0, resolvedOptions, first)
+      assertFullyConsumedSync(cursor, resolvedOptions.strict)
       return
     }
   }
@@ -162,7 +159,7 @@ export function* decodeStreamSync(
   const hasMore = !cursor.atEndSync()
   if (!hasMore && !isKeyValueLineSync(first)) {
     // Single non-key-value line is root primitive
-    yield { type: 'primitive', value: withLine(first, () => parsePrimitiveToken(first.content.trim())) }
+    yield { type: 'primitive', value: withLine(first, () => parsePrimitiveToken(first.content)) }
     return
   }
 
@@ -181,8 +178,16 @@ export function* decodeStreamSync(
   // Process remaining object fields
   while (!cursor.atEndSync()) {
     const line = cursor.peekSync()
-    if (!line || line.depth !== 0) {
+    if (!line) {
       break
+    }
+
+    if (line.depth !== 0) {
+      if (resolvedOptions.strict) {
+        throw overIndentedLineError(line, 0)
+      }
+      cursor.advanceSync()
+      continue
     }
 
     cursor.advanceSync()
@@ -190,6 +195,71 @@ export function* decodeStreamSync(
   }
 
   yield { type: 'endObject' }
+}
+
+function assertNoDepthJump(firstNestedLine: ParsedLine, parentDepth: Depth, strict: boolean): void {
+  if (strict && firstNestedLine.depth > parentDepth + 1) {
+    throw new ToonDecodeError(
+      `Indentation depth jump: expected depth ${parentDepth + 1}, but found ${firstNestedLine.depth}`,
+      { line: firstNestedLine.lineNumber, source: firstNestedLine.raw },
+    )
+  }
+}
+
+function overIndentedLineError(line: ParsedLine, expectedDepth: Depth): ToonDecodeError {
+  return new ToonDecodeError(
+    `Over-indented line: expected depth ${expectedDepth}, but found ${line.depth}`,
+    { line: line.lineNumber, source: line.raw },
+  )
+}
+
+function keylessKeyedError(line: ParsedLine): ToonDecodeError {
+  return new ToonDecodeError(
+    'Keyless keyed header is only valid at the document root',
+    { line: line.lineNumber, source: line.raw },
+  )
+}
+
+function keylessHeaderError(line: ParsedLine): ToonDecodeError {
+  return new ToonDecodeError(
+    'Keyless array header is only valid at the document root or as a list item',
+    { line: line.lineNumber, source: line.raw },
+  )
+}
+
+function keylessFieldsHeaderError(line: ParsedLine): ToonDecodeError {
+  return new ToonDecodeError(
+    'Keyless header with a fields segment is only valid at the document root',
+    { line: line.lineNumber, source: line.raw },
+  )
+}
+
+// Strict decoding never silently discards input: once the root form is
+// complete, any remaining line is an error rather than dropped data
+function assertFullyConsumedSync(cursor: StreamingLineCursor, strict: boolean): void {
+  if (!strict) {
+    return
+  }
+  const line = cursor.peekSync()
+  if (line) {
+    throw new ToonDecodeError(
+      'Unexpected content after the document root',
+      { line: line.lineNumber, source: line.raw },
+    )
+  }
+}
+
+async function assertFullyConsumed(cursor: StreamingLineCursor, strict: boolean): Promise<void> {
+  if (!strict) {
+    return
+  }
+  const line = await cursor.peek()
+  if (line) {
+    throw new ToonDecodeError(
+      'Unexpected content after the document root',
+      { line: line.lineNumber, source: line.raw },
+    )
+  }
 }
 
 function assertNoDuplicateKey(key: string, line: ParsedLine, seenKeys: Set<string> | undefined): void {
@@ -222,18 +292,24 @@ function* decodeKeyValueSync(
     return
   }
 
+  // Keyless headers are only valid at the document root or as list items;
+  // non-strict decoders fall through to key-value parsing
+  if (arrayHeader && arrayHeader.header.key === undefined && options.strict) {
+    throw arrayHeader.header.keyed ? keylessKeyedError(line) : keylessHeaderError(line)
+  }
+
   // Regular key-value pair
-  const { key, isQuoted } = withLine(line, () => parseKeyToken(content, 0))
-  const colonIndex = content.indexOf(COLON, key.length)
-  const rest = colonIndex >= 0 ? content.slice(colonIndex + 1).trim() : ''
+  const { key, end } = withLine(line, () => parseKeyToken(content, 0))
+  const rest = trimSpaces(content.slice(end))
 
   assertNoDuplicateKey(key, line, seenKeys)
-  yield isQuoted ? { type: 'key', key, wasQuoted: true } : { type: 'key', key }
+  yield { type: 'key', key }
 
   // No value after colon - expect nested object or empty
   if (!rest) {
     const nextLine = cursor.peekSync()
     if (nextLine && nextLine.depth > baseDepth) {
+      assertNoDepthJump(nextLine, baseDepth, options.strict)
       yield { type: 'startObject' }
       yield* decodeObjectFieldsSync(cursor, baseDepth + 1, options)
       yield { type: 'endObject' }
@@ -278,6 +354,12 @@ function* decodeObjectFieldsSync(
       cursor.advanceSync()
       yield* decodeKeyValueSync(line, cursor, computedDepth, options, seenKeys)
     }
+    else if (computedDepth !== undefined && line.depth > computedDepth) {
+      if (options.strict) {
+        throw overIndentedLineError(line, computedDepth)
+      }
+      cursor.advanceSync()
+    }
     else {
       break
     }
@@ -292,6 +374,12 @@ function* decodeArrayFromHeaderSync(
   options: DecoderContext,
   headerLine: ParsedLine,
 ): Generator<JsonStreamEvent> {
+  // Keyed tabular header: decodes to an object, not an array
+  if (header.keyed) {
+    yield* decodeKeyedObjectSync(header, cursor, baseDepth, options, headerLine)
+    return
+  }
+
   yield { type: 'startArray', length: header.length }
 
   // Inline primitive array
@@ -319,7 +407,7 @@ function* decodeInlinePrimitiveArraySync(
   options: DecoderContext,
   headerLine: ParsedLine,
 ): Generator<JsonStreamEvent> {
-  if (!inlineValues.trim()) {
+  if (!trimSpaces(inlineValues)) {
     assertExpectedCount(0, header.length, 'inline array items', options, headerLine)
     return
   }
@@ -332,6 +420,88 @@ function* decodeInlinePrimitiveArraySync(
   for (const primitive of primitives) {
     yield { type: 'primitive', value: primitive }
   }
+}
+
+function* decodeKeyedObjectSync(
+  header: ArrayHeaderInfo,
+  cursor: StreamingLineCursor,
+  baseDepth: Depth,
+  options: DecoderContext,
+  headerLine: ParsedLine,
+): Generator<JsonStreamEvent> {
+  const entryDepth = baseDepth + 1
+  const leafFieldCount = countLeafFields(header.fields!)
+  const seenEntryKeys = options.strict ? new Set<string>() : undefined
+  let entryCount = 0
+  let startLine: number | undefined
+  let endLine: number | undefined
+  let lastEntryLine: ParsedLine = headerLine
+
+  yield { type: 'startObject' }
+
+  // A keyed scope ends only when the depth decreases to the header's
+  // depth or less, or at end of input; every line at entry depth with an
+  // unquoted colon is an entry row
+  while (!cursor.atEndSync()) {
+    const line = cursor.peekSync()
+    if (!line || line.depth <= baseDepth) {
+      break
+    }
+
+    if (line.depth > entryDepth) {
+      if (options.strict) {
+        throw new ToonDecodeError(
+          'Unexpected indentation inside keyed tabular object',
+          { line: line.lineNumber, source: line.raw },
+        )
+      }
+      cursor.advanceSync()
+      continue
+    }
+
+    if (findUnquotedChar(line.content, COLON) === -1) {
+      if (options.strict) {
+        throw new ToonDecodeError(
+          'Expected entry row inside keyed tabular object',
+          { line: line.lineNumber, source: line.raw },
+        )
+      }
+      cursor.advanceSync()
+      continue
+    }
+
+    cursor.advanceSync()
+    if (startLine === undefined) {
+      startLine = line.lineNumber
+    }
+    endLine = line.lineNumber
+    lastEntryLine = line
+
+    // Split at the first unquoted colon: entry key first, then the
+    // remainder splits on the active delimiter into cells
+    const { key, end } = withLine(line, () => parseKeyToken(line.content, 0))
+    assertNoDuplicateKey(key, line, seenEntryKeys)
+    yield { type: 'key', key }
+
+    const cellsContent = trimSpaces(line.content.slice(end))
+    const values = cellsContent === ''
+      ? []
+      : withLine(line, () => parseDelimitedValues(cellsContent, header.delimiter))
+    assertExpectedCount(values.length, leafFieldCount, 'keyed entry cells', options, line)
+
+    const primitives = withLine(line, () => mapRowValuesToPrimitives(values))
+    yield* yieldObjectFromFields(header.fields!, primitives)
+
+    entryCount++
+  }
+
+  assertExpectedCount(entryCount, header.length, 'keyed entries', options, lastEntryLine)
+
+  if (options.strict && startLine !== undefined && endLine !== undefined) {
+    validateNoBlankLinesInRange(startLine, endLine, cursor.getBlankLines(), options.strict, 'keyed tabular object')
+  }
+
+  yield { type: 'endObject' }
 }
 
 function* decodeTabularArraySync(
@@ -354,6 +524,10 @@ function* decodeTabularArraySync(
     }
 
     if (line.depth === rowDepth) {
+      if (!isDataRow(line.content, header.delimiter)) {
+        break
+      }
+
       if (startLine === undefined) {
         startLine = line.lineNumber
       }
@@ -362,7 +536,7 @@ function* decodeTabularArraySync(
 
       cursor.advanceSync()
       const values = withLine(line, () => parseDelimitedValues(line.content, header.delimiter))
-      assertExpectedCount(values.length, header.fields!.length, 'tabular row values', options, line)
+      assertExpectedCount(values.length, countLeafFields(header.fields!), 'tabular row values', options, line)
 
       const primitives = withLine(line, () => mapRowValuesToPrimitives(values))
       yield* yieldObjectFromFields(header.fields!, primitives)
@@ -469,13 +643,13 @@ function* decodeListItemSync(
     )
   }
 
-  if (!afterHyphen.trim()) {
+  if (!trimSpaces(afterHyphen)) {
     yield { type: 'startObject' }
     yield { type: 'endObject' }
     return
   }
 
-  if (afterHyphen.trim() === '[]') {
+  if (trimSpaces(afterHyphen) === '[]') {
     yield { type: 'startArray', length: 0 }
     yield { type: 'endArray' }
     return
@@ -487,8 +661,17 @@ function* decodeListItemSync(
   if (isArrayHeaderContent(afterHyphen)) {
     const arrayHeader = withLine(itemLine, () => parseArrayHeaderLine(afterHyphen, DEFAULT_DELIMITER, options.strict))
     if (arrayHeader) {
-      yield* decodeArrayFromHeaderSync(arrayHeader.header, arrayHeader.inlineValues, cursor, baseDepth, options, itemLine)
-      return
+      // There is no keyless keyed (`- [N:]{fields}:`) or fields-bearing
+      // (`- [N]{fields}:`) list-item form
+      if (arrayHeader.header.keyed || arrayHeader.header.fields !== undefined) {
+        if (options.strict) {
+          throw arrayHeader.header.keyed ? keylessKeyedError(itemLine) : keylessFieldsHeaderError(itemLine)
+        }
+      }
+      else {
+        yield* decodeArrayFromHeaderSync(arrayHeader.header, arrayHeader.inlineValues, cursor, baseDepth, options, itemLine)
+        return
+      }
     }
   }
 
@@ -578,11 +761,6 @@ export async function* decodeStream(
   source: AsyncIterable<string> | Iterable<string>,
   options?: DecodeStreamOptions,
 ): AsyncGenerator<JsonStreamEvent> {
-  // Validate options
-  if (options?.expandPaths !== undefined) {
-    throw new Error('expandPaths is not supported in streaming decode')
-  }
-
   const resolvedOptions = {
     indent: options?.indent ?? 2,
     strict: options?.strict ?? true,
@@ -604,10 +782,11 @@ export async function* decodeStream(
       return
     }
 
-    if (first.content.trim() === '[]') {
+    if (trimSpaces(first.content) === '[]') {
       await cursor.advance()
       yield { type: 'startArray', length: 0 }
       yield { type: 'endArray' }
+      await assertFullyConsumed(cursor, resolvedOptions.strict)
       return
     }
 
@@ -617,6 +796,7 @@ export async function* decodeStream(
       if (headerInfo) {
         await cursor.advance()
         yield* decodeArrayFromHeaderAsync(headerInfo.header, headerInfo.inlineValues, cursor, 0, resolvedOptions, first)
+        await assertFullyConsumed(cursor, resolvedOptions.strict)
         return
       }
     }
@@ -625,7 +805,7 @@ export async function* decodeStream(
     await cursor.advance()
     const hasMore = !(await cursor.atEnd())
     if (!hasMore && !isKeyValueLineSync(first)) {
-      yield { type: 'primitive', value: withLine(first, () => parsePrimitiveToken(first.content.trim())) }
+      yield { type: 'primitive', value: withLine(first, () => parsePrimitiveToken(first.content)) }
       return
     }
 
@@ -644,9 +824,18 @@ export async function* decodeStream(
     // Process remaining object fields
     while (!(await cursor.atEnd())) {
       const line = await cursor.peek()
-      if (!line || line.depth !== 0) {
+      if (!line) {
         break
       }
+
+      if (line.depth !== 0) {
+        if (resolvedOptions.strict) {
+          throw overIndentedLineError(line, 0)
+        }
+        await cursor.advance()
+        continue
+      }
+
       await cursor.advance()
       yield* decodeKeyValueAsync(line, cursor, 0, resolvedOptions, rootSeenKeys)
     }
@@ -677,18 +866,24 @@ async function* decodeKeyValueAsync(
     return
   }
 
+  // Keyless headers are only valid at the document root or as list items;
+  // non-strict decoders fall through to key-value parsing
+  if (arrayHeader && arrayHeader.header.key === undefined && options.strict) {
+    throw arrayHeader.header.keyed ? keylessKeyedError(line) : keylessHeaderError(line)
+  }
+
   // Regular key-value pair
-  const { key, isQuoted } = withLine(line, () => parseKeyToken(content, 0))
-  const colonIndex = content.indexOf(COLON, key.length)
-  const rest = colonIndex >= 0 ? content.slice(colonIndex + 1).trim() : ''
+  const { key, end } = withLine(line, () => parseKeyToken(content, 0))
+  const rest = trimSpaces(content.slice(end))
 
   assertNoDuplicateKey(key, line, seenKeys)
-  yield isQuoted ? { type: 'key', key, wasQuoted: true } : { type: 'key', key }
+  yield { type: 'key', key }
 
   // No value after colon - expect nested object or empty
   if (!rest) {
     const nextLine = await cursor.peek()
     if (nextLine && nextLine.depth > baseDepth) {
+      assertNoDepthJump(nextLine, baseDepth, options.strict)
       yield { type: 'startObject' }
       yield* decodeObjectFieldsAsync(cursor, baseDepth + 1, options)
       yield { type: 'endObject' }
@@ -733,6 +928,12 @@ async function* decodeObjectFieldsAsync(
       await cursor.advance()
       yield* decodeKeyValueAsync(line, cursor, computedDepth, options, seenKeys)
     }
+    else if (computedDepth !== undefined && line.depth > computedDepth) {
+      if (options.strict) {
+        throw overIndentedLineError(line, computedDepth)
+      }
+      await cursor.advance()
+    }
     else {
       break
     }
@@ -747,6 +948,12 @@ async function* decodeArrayFromHeaderAsync(
   options: DecoderContext,
   headerLine: ParsedLine,
 ): AsyncGenerator<JsonStreamEvent> {
+  // Keyed tabular header: decodes to an object, not an array
+  if (header.keyed) {
+    yield* decodeKeyedObjectAsync(header, cursor, baseDepth, options, headerLine)
+    return
+  }
+
   yield { type: 'startArray', length: header.length }
 
   // Inline primitive array
@@ -766,6 +973,88 @@ async function* decodeArrayFromHeaderAsync(
   // List array
   yield* decodeListArrayAsync(header, cursor, baseDepth, options, headerLine)
   yield { type: 'endArray' }
+}
+
+async function* decodeKeyedObjectAsync(
+  header: ArrayHeaderInfo,
+  cursor: StreamingLineCursor,
+  baseDepth: Depth,
+  options: DecoderContext,
+  headerLine: ParsedLine,
+): AsyncGenerator<JsonStreamEvent> {
+  const entryDepth = baseDepth + 1
+  const leafFieldCount = countLeafFields(header.fields!)
+  const seenEntryKeys = options.strict ? new Set<string>() : undefined
+  let entryCount = 0
+  let startLine: number | undefined
+  let endLine: number | undefined
+  let lastEntryLine: ParsedLine = headerLine
+
+  yield { type: 'startObject' }
+
+  // A keyed scope ends only when the depth decreases to the header's
+  // depth or less, or at end of input; every line at entry depth with an
+  // unquoted colon is an entry row
+  while (!(await cursor.atEnd())) {
+    const line = await cursor.peek()
+    if (!line || line.depth <= baseDepth) {
+      break
+    }
+
+    if (line.depth > entryDepth) {
+      if (options.strict) {
+        throw new ToonDecodeError(
+          'Unexpected indentation inside keyed tabular object',
+          { line: line.lineNumber, source: line.raw },
+        )
+      }
+      await cursor.advance()
+      continue
+    }
+
+    if (findUnquotedChar(line.content, COLON) === -1) {
+      if (options.strict) {
+        throw new ToonDecodeError(
+          'Expected entry row inside keyed tabular object',
+          { line: line.lineNumber, source: line.raw },
+        )
+      }
+      await cursor.advance()
+      continue
+    }
+
+    await cursor.advance()
+    if (startLine === undefined) {
+      startLine = line.lineNumber
+    }
+    endLine = line.lineNumber
+    lastEntryLine = line
+
+    // Split at the first unquoted colon: entry key first, then the
+    // remainder splits on the active delimiter into cells
+    const { key, end } = withLine(line, () => parseKeyToken(line.content, 0))
+    assertNoDuplicateKey(key, line, seenEntryKeys)
+    yield { type: 'key', key }
+
+    const cellsContent = trimSpaces(line.content.slice(end))
+    const values = cellsContent === ''
+      ? []
+      : withLine(line, () => parseDelimitedValues(cellsContent, header.delimiter))
+    assertExpectedCount(values.length, leafFieldCount, 'keyed entry cells', options, line)
+
+    const primitives = withLine(line, () => mapRowValuesToPrimitives(values))
+    yield* yieldObjectFromFields(header.fields!, primitives)
+
+    entryCount++
+  }
+
+  assertExpectedCount(entryCount, header.length, 'keyed entries', options, lastEntryLine)
+
+  if (options.strict && startLine !== undefined && endLine !== undefined) {
+    validateNoBlankLinesInRange(startLine, endLine, cursor.getBlankLines(), options.strict, 'keyed tabular object')
+  }
+
+  yield { type: 'endObject' }
 }
 
 async function* decodeTabularArrayAsync(
@@ -788,6 +1077,10 @@ async function* decodeTabularArrayAsync(
     }
 
     if (line.depth === rowDepth) {
+      if (!isDataRow(line.content, header.delimiter)) {
+        break
+      }
+
       if (startLine === undefined) {
         startLine = line.lineNumber
       }
@@ -796,7 +1089,7 @@ async function* decodeTabularArrayAsync(
 
       await cursor.advance()
       const values = withLine(line, () => parseDelimitedValues(line.content, header.delimiter))
-      assertExpectedCount(values.length, header.fields!.length, 'tabular row values', options, line)
+      assertExpectedCount(values.length, countLeafFields(header.fields!), 'tabular row values', options, line)
 
       const primitives = withLine(line, () => mapRowValuesToPrimitives(values))
       yield* yieldObjectFromFields(header.fields!, primitives)
@@ -903,13 +1196,13 @@ async function* decodeListItemAsync(
     )
   }
 
-  if (!afterHyphen.trim()) {
+  if (!trimSpaces(afterHyphen)) {
     yield { type: 'startObject' }
     yield { type: 'endObject' }
     return
   }
 
-  if (afterHyphen.trim() === '[]') {
+  if (trimSpaces(afterHyphen) === '[]') {
     yield { type: 'startArray', length: 0 }
     yield { type: 'endArray' }
     return
@@ -921,8 +1214,17 @@ async function* decodeListItemAsync(
   if (isArrayHeaderContent(afterHyphen)) {
     const arrayHeader = withLine(itemLine, () => parseArrayHeaderLine(afterHyphen, DEFAULT_DELIMITER, options.strict))
     if (arrayHeader) {
-      yield* decodeArrayFromHeaderAsync(arrayHeader.header, arrayHeader.inlineValues, cursor, baseDepth, options, itemLine)
-      return
+      // There is no keyless keyed (`- [N:]{fields}:`) or fields-bearing
+      // (`- [N]{fields}:`) list-item form
+      if (arrayHeader.header.keyed || arrayHeader.header.fields !== undefined) {
+        if (options.strict) {
+          throw arrayHeader.header.keyed ? keylessKeyedError(itemLine) : keylessFieldsHeaderError(itemLine)
+        }
+      }
+      else {
+        yield* decodeArrayFromHeaderAsync(arrayHeader.header, arrayHeader.inlineValues, cursor, baseDepth, options, itemLine)
+        return
+      }
     }
   }
 
@@ -995,15 +1297,26 @@ async function* decodeListItemAsync(
 // #region Shared decoder helpers
 
 function* yieldObjectFromFields(
-  fields: string[],
-  primitives: JsonPrimitive[],
+  fields: readonly FieldNode[],
+  primitives: readonly JsonPrimitive[],
 ): Generator<JsonStreamEvent> {
-  yield { type: 'startObject' }
-  for (let i = 0; i < fields.length; i++) {
-    yield { type: 'key', key: fields[i]! }
-    yield { type: 'primitive', value: primitives[i]! }
+  let cellIndex = 0
+
+  function* walkFieldGroup(nodes: readonly FieldNode[]): Generator<JsonStreamEvent> {
+    yield { type: 'startObject' }
+    for (const node of nodes) {
+      yield { type: 'key', key: node.name }
+      if (node.children) {
+        yield* walkFieldGroup(node.children)
+      }
+      else {
+        yield { type: 'primitive', value: primitives[cellIndex++]! }
+      }
+    }
+    yield { type: 'endObject' }
   }
-  yield { type: 'endObject' }
+
+  yield* walkFieldGroup(fields)
 }
 
 // #endregion

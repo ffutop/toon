@@ -1,5 +1,5 @@
 import type { BlankLineInfo, Depth, ParsedLine } from '../types.ts'
-import { SPACE, TAB } from '../constants.ts'
+import { CARRIAGE_RETURN, COMMENT_MARKER, SPACE, TAB } from '../constants.ts'
 import { ToonDecodeError } from './errors.ts'
 
 // #region Scan state
@@ -29,6 +29,12 @@ export function parseLineIncremental(
   state.lineNumber++
   const lineNumber = state.lineNumber
 
+  // A trailing carriage return belongs to a CRLF line terminator, not to
+  // the line's content
+  if (raw[raw.length - 1] === CARRIAGE_RETURN) {
+    raw = raw.slice(0, -1)
+  }
+
   // Count leading spaces
   let indent = 0
   while (indent < raw.length && raw[indent] === SPACE) {
@@ -36,6 +42,13 @@ export function parseLineIncremental(
   }
 
   const content = raw.slice(indent)
+
+  // Comment lines vanish in a lexical pre-pass: they are removed before
+  // blank-line tracking and strict validation, and are never counted as
+  // rows, items, entries, or blank lines
+  if (content[0] === COMMENT_MARKER) {
+    return undefined
+  }
 
   // Track blank lines
   if (!content.trim()) {

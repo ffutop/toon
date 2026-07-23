@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/toon-format/toon/actions/workflows/ci.yml/badge.svg)](https://github.com/toon-format/toon/actions)
 [![npm version](https://img.shields.io/npm/v/@toon-format/toon.svg?labelColor=1b1b1f&color=fef3c0)](https://www.npmjs.com/package/@toon-format/toon)
-[![SPEC v3.3](https://img.shields.io/badge/spec-v3.3-fef3c0?labelColor=1b1b1f)](https://github.com/toon-format/spec)
+[![SPEC v4.0](https://img.shields.io/badge/spec-v4.0-fef3c0?labelColor=1b1b1f)](https://github.com/toon-format/spec)
 [![npm downloads (total)](https://img.shields.io/npm/dt/@toon-format/toon.svg?labelColor=1b1b1f&color=fef3c0)](https://www.npmjs.com/package/@toon-format/toon)
 [![License: MIT](https://img.shields.io/badge/license-MIT-fef3c0?labelColor=1b1b1f)](./LICENSE)
 
@@ -758,14 +758,14 @@ import { encode } from '@toon-format/toon'
 
 const data = {
   users: [
-    { id: 1, name: 'Alice', role: 'admin' },
+    { id: 1, name: 'Ada', role: 'admin' },
     { id: 2, name: 'Bob', role: 'user' }
   ]
 }
 
 console.log(encode(data))
 // users[2]{id,name,role}:
-//   1,Alice,admin
+//   1,Ada,admin
 //   2,Bob,user
 ```
 
@@ -791,11 +791,11 @@ for (const line of encodeLines(largeData)) {
 import { encode } from '@toon-format/toon'
 
 // Remove sensitive fields
-const user = { name: 'Alice', password: 'secret', email: 'alice@example.com' }
+const user = { name: 'Ada', password: 'secret', email: 'ada@example.com' }
 const safe = encode(user, {
   replacer: (key, value) => key === 'password' ? undefined : value
 })
-// name: Alice
+// name: Ada
 // email: alice@example.com
 
 // Transform values

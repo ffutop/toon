@@ -1,7 +1,7 @@
-import type { ArrayHeaderInfo, Delimiter, JsonPrimitive } from '../types.ts'
+import type { ArrayHeaderInfo, Delimiter, FieldNode, JsonPrimitive } from '../types.ts'
 import { BACKSLASH, CLOSE_BRACE, CLOSE_BRACKET, COLON, DELIMITERS, DOUBLE_QUOTE, FALSE_LITERAL, NULL_LITERAL, OPEN_BRACE, OPEN_BRACKET, PIPE, TAB, TRUE_LITERAL } from '../constants.ts'
 import { isBooleanOrNullLiteral, isNumericLiteral } from '../shared/literal-utils.ts'
-import { findClosingQuote, findUnquotedChar, unescapeString } from '../shared/string-utils.ts'
+import { findClosingQuote, findUnquotedChar, trimSpaces, unescapeString } from '../shared/string-utils.ts'
 
 // #region Array header parsing
 
@@ -34,14 +34,20 @@ export function parseArrayHeaderLine(
   }
   else {
     // Unquoted key - find first bracket
-    bracketStart = content.indexOf(OPEN_BRACKET)
+    bracketStart = findUnquotedChar(content, OPEN_BRACKET)
   }
 
   if (bracketStart === -1) {
     return
   }
 
-  const bracketEnd = content.indexOf(CLOSE_BRACKET, bracketStart)
+  // A header key can't contain an unquoted colon, so this is a key-value line
+  const firstColonIndex = findUnquotedChar(content, COLON)
+  if (firstColonIndex !== -1 && firstColonIndex < bracketStart) {
+    return
+  }
+
+  const bracketEnd = findUnquotedChar(content, CLOSE_BRACKET, bracketStart)
   if (bracketEnd === -1) {
     return
   }
@@ -51,8 +57,8 @@ export function parseArrayHeaderLine(
   let braceEnd = colonIndex
 
   // Check for fields segment (braces come after bracket)
-  const braceStart = content.indexOf(OPEN_BRACE, bracketEnd)
-  if (braceStart !== -1 && braceStart < content.indexOf(COLON, bracketEnd)) {
+  const braceStart = findUnquotedChar(content, OPEN_BRACE, bracketEnd)
+  if (braceStart !== -1 && braceStart < findUnquotedChar(content, COLON, bracketEnd)) {
     const gapBeforeBrace = content.slice(bracketEnd + 1, braceStart)
     if (gapBeforeBrace !== '') {
       if (strict) {
@@ -64,14 +70,14 @@ export function parseArrayHeaderLine(
       return
     }
 
-    const foundBraceEnd = content.indexOf(CLOSE_BRACE, braceStart)
+    const foundBraceEnd = findMatchingBrace(content, braceStart)
     if (foundBraceEnd !== -1) {
       braceEnd = foundBraceEnd + 1
     }
   }
 
   // Now find colon after brackets and braces
-  colonIndex = content.indexOf(COLON, Math.max(bracketEnd, braceEnd))
+  colonIndex = findUnquotedChar(content, COLON, Math.max(bracketEnd, braceEnd))
   if (colonIndex === -1) {
     return
   }
@@ -95,7 +101,7 @@ export function parseArrayHeaderLine(
     key = rawKey.startsWith(DOUBLE_QUOTE) ? parseStringLiteral(rawKey) : rawKey
   }
 
-  const afterColon = content.slice(colonIndex + 1).trim()
+  const afterColon = trimSpaces(content.slice(colonIndex + 1))
   const bracketContent = content.slice(bracketStart + 1, bracketEnd)
 
   let parsedBracket: ReturnType<typeof parseBracketSegment>
@@ -108,12 +114,12 @@ export function parseArrayHeaderLine(
     return
   }
 
-  const { length, delimiter } = parsedBracket
+  const { length, delimiter, keyed } = parsedBracket
 
   // Check for fields segment
-  let fields: string[] | undefined
+  let fields: FieldNode[] | undefined
   if (braceStart !== -1 && braceStart < colonIndex) {
-    const foundBraceEnd = content.indexOf(CLOSE_BRACE, braceStart)
+    const foundBraceEnd = findMatchingBrace(content, braceStart)
     if (foundBraceEnd !== -1 && foundBraceEnd < colonIndex) {
       const fieldsContent = content.slice(braceStart + 1, foundBraceEnd)
 
@@ -124,8 +130,35 @@ export function parseArrayHeaderLine(
         return
       }
 
-      fields = parseDelimitedValues(fieldsContent, delimiter).map(field => parseStringLiteral(field.trim()))
+      try {
+        fields = parseFieldEntries(fieldsContent, delimiter)
+      }
+      catch (error) {
+        if (strict)
+          throw error
+        return
+      }
+
+      // Duplicate field names produce duplicate sibling keys in every
+      // decoded element: strict mode errors, non-strict LWW applies
+      if (strict) {
+        assertNoDuplicateFieldNames(fields)
+      }
     }
+  }
+
+  if (keyed && !fields) {
+    if (strict)
+      throw new SyntaxError('Keyed header requires a fields segment')
+    return
+  }
+
+  // A fields-bearing header, keyed or not, carries no inline content;
+  // decoding the values as an inline array would silently drop the fields
+  if (fields && afterColon) {
+    if (strict)
+      throw new SyntaxError('Unexpected content after fields-bearing header colon')
+    return
   }
 
   return {
@@ -134,6 +167,7 @@ export function parseArrayHeaderLine(
       length,
       delimiter,
       fields,
+      keyed,
     },
     inlineValues: afterColon || undefined,
   }
@@ -144,7 +178,7 @@ const BRACKET_LENGTH_PATTERN = /^(?:0|[1-9]\d*)$/
 export function parseBracketSegment(
   seg: string,
   defaultDelimiter: Delimiter,
-): { length: number, delimiter: Delimiter } {
+): { length: number, delimiter: Delimiter, keyed: boolean } {
   let content = seg
 
   // Check for delimiter suffix
@@ -158,11 +192,176 @@ export function parseBracketSegment(
     content = content.slice(0, -1)
   }
 
+  // A colon immediately after the length and before the optional delimiter
+  // symbol marks a keyed header: [N:], [N:<TAB>], [N:|]. Any other colon
+  // placement leaves a token that fails the length check below.
+  let keyed = false
+  if (content.endsWith(COLON)) {
+    keyed = true
+    content = content.slice(0, -1)
+  }
+
   if (!BRACKET_LENGTH_PATTERN.test(content)) {
     throw new SyntaxError(`Invalid array length: "${seg}" (expected non-negative integer with no leading zeros)`)
   }
 
-  return { length: Number.parseInt(content, 10), delimiter }
+  return { length: Number.parseInt(content, 10), delimiter, keyed }
+}
+
+/**
+ * Parses the content of a fields segment into field entries, recursively
+ * descending into nested field groups (`field{sub1,sub2}`).
+ *
+ * @remarks
+ * Throws on empty segments, empty names, unmatched braces, and content
+ * after a nested group's closing brace; callers decide strict fallthrough.
+ */
+export function parseFieldEntries(fieldsContent: string, delimiter: Delimiter): FieldNode[] {
+  const entries = splitFieldEntries(fieldsContent, delimiter)
+
+  return entries.map((entry) => {
+    const trimmedEntry = trimSpaces(entry)
+    if (!trimmedEntry) {
+      throw new SyntaxError('Empty field name in fields segment')
+    }
+
+    const groupStart = findUnquotedChar(trimmedEntry, OPEN_BRACE)
+    if (groupStart === -1) {
+      return { name: parseStringLiteral(trimmedEntry) }
+    }
+
+    const namePart = trimSpaces(trimmedEntry.slice(0, groupStart))
+    if (!namePart) {
+      throw new SyntaxError('Missing field name before nested field group')
+    }
+
+    const groupEnd = findMatchingBrace(trimmedEntry, groupStart)
+    if (groupEnd === -1) {
+      throw new SyntaxError('Unmatched brace in fields segment')
+    }
+    if (groupEnd !== trimmedEntry.length - 1) {
+      throw new SyntaxError('Unexpected content after nested field group')
+    }
+
+    const children = parseFieldEntries(trimmedEntry.slice(groupStart + 1, groupEnd), delimiter)
+    return { name: parseStringLiteral(namePart), children }
+  })
+}
+
+/**
+ * Splits a fields segment on the active delimiter at brace depth zero,
+ * respecting quoted names and escape sequences.
+ */
+function splitFieldEntries(content: string, delimiter: Delimiter): string[] {
+  const entries: string[] = []
+  let entryBuffer = ''
+  let inQuotes = false
+  let braceDepth = 0
+  let i = 0
+
+  while (i < content.length) {
+    const char = content[i]!
+
+    if (char === BACKSLASH && i + 1 < content.length && inQuotes) {
+      entryBuffer += char + content[i + 1]
+      i += 2
+      continue
+    }
+
+    if (char === DOUBLE_QUOTE) {
+      inQuotes = !inQuotes
+      entryBuffer += char
+      i++
+      continue
+    }
+
+    if (!inQuotes) {
+      if (char === OPEN_BRACE) {
+        braceDepth++
+      }
+      else if (char === CLOSE_BRACE) {
+        braceDepth--
+      }
+      else if (char === delimiter && braceDepth === 0) {
+        entries.push(entryBuffer)
+        entryBuffer = ''
+        i++
+        continue
+      }
+    }
+
+    entryBuffer += char
+    i++
+  }
+
+  entries.push(entryBuffer)
+  return entries
+}
+
+/**
+ * Finds the index of the closing brace matching the opening brace at
+ * `braceStart`, ignoring braces inside quoted names.
+ */
+export function findMatchingBrace(content: string, braceStart: number): number {
+  let inQuotes = false
+  let braceDepth = 0
+  let i = braceStart
+
+  while (i < content.length) {
+    const char = content[i]
+
+    if (char === BACKSLASH && i + 1 < content.length && inQuotes) {
+      i += 2
+      continue
+    }
+
+    if (char === DOUBLE_QUOTE) {
+      inQuotes = !inQuotes
+      i++
+      continue
+    }
+
+    if (!inQuotes) {
+      if (char === OPEN_BRACE) {
+        braceDepth++
+      }
+      else if (char === CLOSE_BRACE) {
+        braceDepth--
+        if (braceDepth === 0) {
+          return i
+        }
+      }
+    }
+
+    i++
+  }
+
+  return -1
+}
+
+function assertNoDuplicateFieldNames(fields: readonly FieldNode[]): void {
+  const seenNames = new Set<string>()
+  for (const field of fields) {
+    if (seenNames.has(field.name)) {
+      throw new SyntaxError(`Duplicate field name "${field.name}" in fields segment`)
+    }
+    seenNames.add(field.name)
+    if (field.children) {
+      assertNoDuplicateFieldNames(field.children)
+    }
+  }
+}
+
+/**
+ * Counts the leaf fields of a field list: the number of cells each row
+ * carries, via a depth-first walk of nested field groups.
+ */
+export function countLeafFields(fields: readonly FieldNode[]): number {
+  let leafCount = 0
+  for (const field of fields) {
+    leafCount += field.children ? countLeafFields(field.children) : 1
+  }
+  return leafCount
 }
 
 const DELIMITER_CANDIDATES: readonly Delimiter[] = [',', '\t', '|']
@@ -219,7 +418,7 @@ export function parseDelimitedValues(input: string, delimiter: Delimiter): strin
     }
 
     if (char === delimiter && !inQuotes) {
-      values.push(valueBuffer.trim())
+      values.push(trimSpaces(valueBuffer))
       valueBuffer = ''
       i++
       continue
@@ -231,7 +430,7 @@ export function parseDelimitedValues(input: string, delimiter: Delimiter): strin
 
   // Add last value
   if (valueBuffer || values.length > 0) {
-    values.push(valueBuffer.trim())
+    values.push(trimSpaces(valueBuffer))
   }
 
   return values
@@ -246,7 +445,7 @@ export function mapRowValuesToPrimitives(values: string[]): JsonPrimitive[] {
 // #region Primitive and key parsing
 
 export function parsePrimitiveToken(token: string): JsonPrimitive {
-  const trimmedToken = token.trim()
+  const trimmedToken = trimSpaces(token)
 
   // Empty token
   if (!trimmedToken) {
@@ -280,7 +479,7 @@ export function parsePrimitiveToken(token: string): JsonPrimitive {
 }
 
 export function parseStringLiteral(token: string): string {
-  const trimmedToken = token.trim()
+  const trimmedToken = trimSpaces(token)
 
   if (trimmedToken.startsWith(DOUBLE_QUOTE)) {
     // Find the closing quote, accounting for escaped quotes
@@ -313,7 +512,7 @@ export function parseUnquotedKey(content: string, start: number): { key: string,
     throw new SyntaxError('Missing colon after key')
   }
 
-  const key = content.slice(start, parsePosition).trim()
+  const key = trimSpaces(content.slice(start, parsePosition))
 
   // Skip the colon
   parsePosition++
@@ -343,12 +542,10 @@ export function parseQuotedKey(content: string, start: number): { key: string, e
   return { key, end: parsePosition }
 }
 
-export function parseKeyToken(content: string, start: number): { key: string, end: number, isQuoted: boolean } {
-  const isQuoted = content[start] === DOUBLE_QUOTE
-  const result = isQuoted
+export function parseKeyToken(content: string, start: number): { key: string, end: number } {
+  return content[start] === DOUBLE_QUOTE
     ? parseQuotedKey(content, start)
     : parseUnquotedKey(content, start)
-  return { ...result, isQuoted }
 }
 
 // #endregion

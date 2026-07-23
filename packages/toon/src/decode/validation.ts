@@ -1,5 +1,6 @@
 import type { ArrayHeaderInfo, BlankLineInfo, Delimiter, Depth, ParsedLine } from '../types.ts'
 import { COLON, LIST_ITEM_PREFIX } from '../constants.ts'
+import { findUnquotedChar } from '../shared/string-utils.ts'
 import { ToonDecodeError } from './errors.ts'
 
 // #region Count and structure validation
@@ -91,9 +92,9 @@ export function validateNoBlankLinesInRange(
 /**
  * Checks if a line is a data row (vs a key-value pair) in a tabular array.
  */
-function isDataRow(content: string, delimiter: Delimiter): boolean {
-  const colonPos = content.indexOf(COLON)
-  const delimiterPos = content.indexOf(delimiter)
+export function isDataRow(content: string, delimiter: Delimiter): boolean {
+  const colonPos = findUnquotedChar(content, COLON)
+  const delimiterPos = findUnquotedChar(content, delimiter)
 
   // No colon = definitely a data row
   if (colonPos === -1) {
