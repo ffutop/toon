@@ -35,9 +35,7 @@ import { encode } from '@toon-format/toon'
 
 const toon = encode(data, {
   indent: 2,
-  delimiter: ',',
-  keyFolding: 'off',
-  flattenDepth: Infinity
+  delimiter: ','
 })
 ```
 
@@ -193,7 +191,7 @@ type EncodeReplacer = (
 import { encode } from '@toon-format/toon'
 
 const data = {
-  user: { name: 'Alice', password: 'secret123', email: 'alice@example.com' }
+  user: { name: 'Ada', password: 'secret123', email: 'ada@example.com' }
 }
 
 function replacer(key, value) {
@@ -209,8 +207,8 @@ console.log(encode(data, { replacer }))
 
 ```yaml
 user:
-  name: Alice
-  email: alice@example.com
+  name: Ada
+  email: ada@example.com
 ```
 
 **转换值：**
@@ -285,8 +283,7 @@ import { decode } from '@toon-format/toon'
 
 const data = decode(toon, {
   indent: 2,
-  strict: true,
-  expandPaths: 'off'
+  strict: true
 })
 ```
 
@@ -331,7 +328,7 @@ console.log(data)
 
 将预先按行拆分好的 TOON 数据解码为一个 JavaScript 值。这是一个对流式处理友好的封装，基于事件驱动的解码器会在内存中构建完整的值。
 
-当你已经拥有数组或可迭代对象形式的行数据（例如来自文件流、readline 接口或网络响应），并希望获得带路径展开支持的标准解码行为时，该函数非常有用。
+当你已经拥有数组或可迭代对象形式的行数据（例如来自文件流、readline 接口或网络响应），并希望获得标准解码行为时，该函数非常有用。
 
 #### 参数
 
@@ -351,9 +348,9 @@ console.log(data)
 ```ts
 import { decodeFromLines } from '@toon-format/toon'
 
-const lines = ['name: Alice', 'age: 30']
+const lines = ['name: Ada', 'age: 30']
 const value = decodeFromLines(lines)
-// { name: 'Alice', age: 30 }
+// { name: 'Ada', age: 30 }
 ```
 
 **Node.js readline 流式处理：**
@@ -372,26 +369,17 @@ const value = decodeFromLines(rl)
 console.log(value)
 ```
 
-**配合路径展开：**
-
-```ts
-const lines = ['user.name: Alice', 'user.age: 30']
-const value = decodeFromLines(lines, { expandPaths: 'safe' })
-// { user: { name: 'Alice', age: 30 } }
-```
-
 ### 选择合适的解码器
 
-| 函数 | 输入 | 输出 | 异步 | 路径展开 | 适用场景 |
-|----------|-------|--------|-------|----------------|----------|
-| `decode()` | 字符串 | 值 | 否 | 支持 | 你拥有完整的 TOON 字符串 |
-| `decodeFromLines()` | 行 | 值 | 否 | 支持 | 你拥有行数据，并希望得到完整的值 |
-| `decodeStreamSync()` | 行 | 事件 | 否 | 不支持 | 你需要逐事件处理（同步） |
-| `decodeStream()` | 行 | 事件 | 是 | 不支持 | 你需要逐事件处理（异步） |
+| 函数 | 输入 | 输出 | 异步 | 适用场景 |
+|----------|-------|--------|-------|----------|
+| `decode()` | 字符串 | 值 | 否 | 你拥有完整的 TOON 字符串 |
+| `decodeFromLines()` | 行 | 值 | 否 | 你拥有行数据，并希望得到完整的值 |
+| `decodeStreamSync()` | 行 | 事件 | 否 | 你需要逐事件处理（同步） |
+| `decodeStream()` | 行 | 事件 | 是 | 你需要逐事件处理（异步） |
 
 ::: info 关键区别
 - **值 vs 事件**：以 `Stream` 结尾的函数会产生事件，而不会在内存中构建完整的值。
-- **路径展开**：只有 `decode()` 和 `decodeFromLines()` 支持 `expandPaths: 'safe'`。
 - **异步支持**：只有 `decodeStream()` 接受异步可迭代对象（适用于文件/网络流）。
 :::
 
@@ -405,8 +393,6 @@ const value = decodeFromLines(lines, { expandPaths: 'safe' })
 
 ::: tip 事件流
 这是一个返回单个解析事件的底层 API。对于大多数使用场景，[`decodeFromLines()`](#decodefromlines-lines-options) 或 [`decode()`](#decode-input-options) 会更方便。
-
-流式模式下**不支持**路径展开(`expandPaths: 'safe'`)，因为它需要完整的嵌套值结构。
 :::
 
 #### 参数
@@ -427,7 +413,7 @@ const value = decodeFromLines(lines, { expandPaths: 'safe' })
 ```ts
 import { decodeStreamSync } from '@toon-format/toon'
 
-const lines = ['name: Alice', 'age: 30']
+const lines = ['name: Ada', 'age: 30']
 
 for (const event of decodeStreamSync(lines)) {
   console.log(event)
@@ -436,7 +422,7 @@ for (const event of decodeStreamSync(lines)) {
 // 输出:
 // { type: 'startObject' }
 // { type: 'key', key: 'name' }
-// { type: 'primitive', value: 'Alice' }
+// { type: 'primitive', value: 'Ada' }
 // { type: 'key', key: 'age' }
 // { type: 'primitive', value: 30 }
 // { type: 'endObject' }
@@ -447,7 +433,7 @@ for (const event of decodeStreamSync(lines)) {
 ```ts
 import { decodeStreamSync } from '@toon-format/toon'
 
-const lines = ['users[2]{id,name}:', '  1,Alice', '  2,Bob']
+const lines = ['users[2]{id,name}:', '  1,Ada', '  2,Bob']
 let userCount = 0
 
 for (const event of decodeStreamSync(lines)) {
@@ -550,8 +536,6 @@ catch (error) {
 |--------|------|---------|-------------|
 | `indent` | `number` | `2` | 每个缩进层级的空格数 |
 | `delimiter` | `','` \| `'\t'` \| `'\|'` | `','` | 数组值和表格行使用的分隔符 |
-| `keyFolding` | `'off'` \| `'safe'` | `'off'` | 启用键折叠，将单键嵌套包装链折叠为点分路径 |
-| `flattenDepth` | `number` | `Infinity` | 启用 `keyFolding` 时最多折叠的片段数（值为 0-1 时没有实际效果） |
 | `replacer` | `EncodeReplacer` | `undefined` | 编码前用于转换或省略值的可选钩子（参见 [替换函数](#替换函数-replacer)） |
 
 **分隔符选项：**
@@ -582,24 +566,21 @@ encode(data, { delimiter: '|' })
 |--------|------|---------|-------------|
 | `indent` | `number` | `2` | 每个缩进层级期望的空格数 |
 | `strict` | `boolean` | `true` | 启用严格校验（数组数量、缩进、分隔符一致性） |
-| `expandPaths` | `'off'` \| `'safe'` | `'off'` | 启用路径展开，将带点号的键还原为嵌套对象（与 `keyFolding: 'safe'` 搭配使用） |
 
 默认情况下(`strict: true`)，解码器会严格校验输入：
 
 - **非法转义序列**：遇到 `\x`、未终止的字符串、无法完整表示 Unicode 字符的 `\uXXXX` 时抛出错误
 - **语法错误**：遇到缺少冒号、格式错误的首部时抛出错误
 - **数组长度不匹配**：当声明的长度与实际数量不一致时抛出错误
+- **带键表格不匹配**：当条目行数量与声明数量不一致，或某一行的单元格数量与首部叶子字段数量不一致时抛出错误（§9.5）
 - **首部分隔符不匹配**：当方括号中声明的分隔符与字段列表中使用的分隔符不一致时抛出错误(§14.2)
-- **缩进错误**：当前导空格数不是 `indent` 的整数倍时抛出错误
-- **首部结构**：遇到带前导零或非整数的数组长度，以及方括号/字段/冒号之间存在插入内容时抛出错误
-- **重复的同级键**：当同一对象下存在两个具有相同键的子项时抛出错误(§14.4)
-- **路径展开冲突**：当设置了 `expandPaths: 'safe'` 时，遇到会发生冲突的重叠点号路径时抛出错误
+- **缩进错误**：当前导空格数不是 `indent` 的整数倍、进入嵌套作用域时深度跳过一级以上、或出现不属于任何作用域的过度缩进行时抛出错误（§14.2）。严格解码绝不会静默丢弃输入，包括根数组或根级带键表格完成后的尾随内容（§5）
+- **首部结构**：遇到带前导零或非整数的数组长度、格式错误的带键标记，以及方括号/字段/冒号之间存在插入内容时抛出错误
+- **重复的同级键**：当同一对象下存在两个具有相同键的子项时抛出错误，包括重复的条目键（§14.3）
 
 所有解码错误都以 [`ToonDecodeError`](#错误处理) 实例的形式抛出，并带有结构化的 `line` 和 `source` 字段。
 
-将 `strict` 设为 `false` 可跳过这些检查。此时重复的同级键和路径展开冲突会按照文档顺序、以最后写入的值为准来解决。
-
-关于路径展开行为和冲突解决的更多细节，请参阅 [键折叠与路径展开](#键折叠与路径展开)。
+将 `strict` 设为 `false` 可跳过这些检查。此时重复的同级键会按照文档顺序、以最后写入的值为准来解决。
 
 ### `DecodeStreamOptions`
 
@@ -609,10 +590,6 @@ encode(data, { delimiter: '|' })
 |--------|------|---------|-------------|
 | `indent` | `number` | `2` | 每个缩进层级期望的空格数 |
 | `strict` | `boolean` | `true` | 启用严格校验（数组数量、缩进、分隔符一致性） |
-
-::: warning 不支持路径展开
-路径展开需要构建完整的嵌套值结构，这与事件流处理不兼容。如果你需要路径展开，请使用 [`decodeFromLines()`](#decodefromlines-lines-options)。
-:::
 
 ## TypeScript 类型
 
@@ -626,7 +603,7 @@ type JsonStreamEvent
     | { type: 'endObject' }
     | { type: 'startArray', length: number }
     | { type: 'endArray' }
-    | { type: 'key', key: string, wasQuoted?: boolean }
+    | { type: 'key', key: string }
     | { type: 'primitive', value: JsonPrimitive }
 ```
 
@@ -668,7 +645,7 @@ import { decode, encode } from '@toon-format/toon'
 
 const original = {
   users: [
-    { id: 1, name: 'Alice', role: 'admin' },
+    { id: 1, name: 'Ada', role: 'admin' },
     { id: 2, name: 'Bob', role: 'user' }
   ]
 }
@@ -679,67 +656,6 @@ const restored = decode(toon)
 console.log(JSON.stringify(original) === JSON.stringify(restored))
 // true
 ```
-
-**启用键折叠：**
-
-```ts
-import { decode, encode } from '@toon-format/toon'
-
-const original = { data: { metadata: { items: ['a', 'b'] } } }
-
-// 使用折叠进行编码
-const toon = encode(original, { keyFolding: 'safe' })
-// → "data.metadata.items[2]: a,b"
-
-// 使用展开进行解码
-const restored = decode(toon, { expandPaths: 'safe' })
-// → { data: { metadata: { items: ['a', 'b'] } } }
-
-console.log(JSON.stringify(original) === JSON.stringify(restored))
-// true
-```
-
-### 键折叠与路径展开
-
-**键折叠**(`keyFolding: 'safe'`)会在编码期间折叠单键嵌套包装链：
-
-```ts
-import { encode } from '@toon-format/toon'
-
-const data = { data: { metadata: { items: ['a', 'b'] } } }
-
-// 未使用折叠
-encode(data)
-// data:
-//   metadata:
-//     items[2]: a,b
-
-// 使用折叠
-encode(data, { keyFolding: 'safe' })
-// data.metadata.items[2]: a,b
-```
-
-**路径展开**(`expandPaths: 'safe'`)会在解码时反向执行该过程：
-
-```ts
-import { decode } from '@toon-format/toon'
-
-const toon = 'data.metadata.items[2]: a,b'
-
-const data = decode(toon, { expandPaths: 'safe' })
-console.log(data)
-// { data: { metadata: { items: ['a', 'b'] } } }
-```
-
-**展开时发生冲突的解决方式：**
-
-当多个展开后的键构造出重叠的路径时，解码器会递归地合并它们：
-- **对象 + 对象**：递归深度合并
-- **对象 + 非对象**（数组或基本类型）：产生冲突
-  - 使用 `strict: true`（默认）时：抛出错误
-  - 使用 `strict: false` 时：以最后写入的值为准
-
-重复的同级键（与 `expandPaths` 无关）遵循相同的策略：严格模式下抛出错误，宽松模式下保留最后写入的值。
 
 ### 分隔符策略
 
@@ -753,10 +669,10 @@ items[2	]{sku	name	qty	price}:
   B2	Gadget	1	14.5
 ```
 
-对于大型表格数据，若要最大限度减少 token 用量，可以同时使用制表符分隔符和键折叠：
+对于大型表格数据，若要最大限度减少 token 用量，可以使用制表符分隔符：
 
 ```ts
-encode(data, { delimiter: '\t', keyFolding: 'safe' })
+encode(data, { delimiter: '\t' })
 ```
 
 **如何选择分隔符：**

@@ -14,7 +14,7 @@ import VPInput from './VPInput.vue'
 type InputFormat = 'json' | 'yaml'
 type JsonFormat = 'pretty-2' | 'pretty-4' | 'pretty-tab' | 'compact'
 
-interface PlaygroundState extends Required<Pick<EncodeOptions, 'delimiter' | 'indent' | 'keyFolding' | 'flattenDepth'>> {
+interface PlaygroundState extends Required<Pick<EncodeOptions, 'delimiter' | 'indent'>> {
   input: string
   inputFormat: InputFormat
   jsonFormat: JsonFormat
@@ -170,8 +170,6 @@ const formattedInput = computed(() => {
 // Encoder options
 const delimiter = ref<Delimiter>(DEFAULT_DELIMITER)
 const indent = ref(2)
-const keyFolding = ref<'off' | 'safe'>('safe')
-const flattenDepth = ref(2)
 
 // Encoding output
 const encodingResult = computed(() => {
@@ -181,8 +179,6 @@ const encodingResult = computed(() => {
       output: encode(parsedInput, {
         indent: indent.value,
         delimiter: delimiter.value,
-        keyFolding: keyFolding.value,
-        flattenDepth: flattenDepth.value,
       }),
       error: undefined,
     }
@@ -236,7 +232,7 @@ const updateUrl = useDebounceFn(() => {
   window.history.replaceState(null, '', `#${hash}`)
 }, 300)
 
-watch([inputText, delimiter, indent, keyFolding, flattenDepth, jsonFormat, inputFormat], () => {
+watch([inputText, delimiter, indent, jsonFormat, inputFormat], () => {
   updateUrl()
 })
 
@@ -271,8 +267,6 @@ onMounted(() => {
     inputText.value = state.input ?? state.json
     delimiter.value = state.delimiter
     indent.value = state.indent
-    keyFolding.value = state.keyFolding ?? 'safe'
-    flattenDepth.value = state.flattenDepth ?? 2
     jsonFormat.value = state.jsonFormat ?? 'pretty-2'
     inputFormat.value = state.inputFormat ?? 'json'
   }
@@ -288,8 +282,6 @@ function encodeState() {
     inputFormat: inputFormat.value,
     delimiter: delimiter.value,
     indent: indent.value,
-    keyFolding: keyFolding.value,
-    flattenDepth: flattenDepth.value,
     jsonFormat: jsonFormat.value,
   }
 
@@ -364,28 +356,6 @@ async function loadTokenizer() {
             type="number"
             min="0"
             max="8"
-          >
-        </VPInput>
-
-        <VPInput id="keyFolding" label="键折叠">
-          <select id="keyFolding" v-model="keyFolding">
-            <option value="off">
-              关闭
-            </option>
-            <option value="safe">
-              安全
-            </option>
-          </select>
-        </VPInput>
-
-        <VPInput id="flattenDepth" label="展开深度">
-          <input
-            id="flattenDepth"
-            v-model.number="flattenDepth"
-            type="number"
-            min="1"
-            max="10"
-            :disabled="keyFolding === 'off'"
           >
         </VPInput>
 

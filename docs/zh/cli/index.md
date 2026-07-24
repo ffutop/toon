@@ -124,7 +124,6 @@ cat data.toon | toon --decode
 - 使用与 `@toon-format/toon` 中 `decodeStream` API 相同的基于事件的流式解码器。
 - 流式写出 JSON token。
 - 内存中不会保留完整的 JSON 字符串。
-- 启用 `--expandPaths safe` 时，内部会回退为非流式解码，以便在写入 JSON 之前应用深度合并展开。
 
 以最小的内存占用处理大文件：
 
@@ -157,9 +156,6 @@ cat million-records.toon | toon --decode > output.json
 | `--indent <number>` | 缩进（默认：`2`） |
 | `--stats` | 显示 token 数量估算值及节省情况（仅编码时可用） |
 | `--no-strict` | 跳过解码校验（数组数量、缩进、首部分隔符）；重复键时后写入的值生效 |
-| `--keyFolding <mode>` | 键折叠模式：`off`、`safe`（默认：`off`） |
-| `--flattenDepth <number>` | 最多折叠的片段数（默认：`Infinity`）——需要配合 `--keyFolding safe` 使用 |
-| `--expandPaths <mode>` | 路径展开模式：`off`、`safe`（默认：`off`） |
 | `--verbose` | 显示完整的堆栈跟踪和错误原因链（默认：`false`） |
 
 ## 高级示例
@@ -278,78 +274,11 @@ cat large-dataset.json | toon --delimiter $'\t' > output.toon
 jq '.results' data.json | toon > filtered.toon
 ```
 
-### 键折叠
-
-折叠嵌套包装层级以减少 token（自规范 v1.5 起支持）：
-
-::: code-group
-
-```bash [基础键折叠]
-toon input.json --keyFolding safe -o output.toon
-```
-
-```bash [限制折叠深度]
-toon input.json --keyFolding safe --flattenDepth 2 -o output.toon
-```
-
-:::
-
-**示例：**
-
-对于如下数据：
-
-```json
-{
-  "data": {
-    "metadata": {
-      "items": ["a", "b"]
-    }
-  }
-}
-```
-
-使用 `--keyFolding safe` 后，输出变为：
-
-```yaml
-data.metadata.items[2]: a,b
-```
-
-而不是：
-
-```yaml
-data:
-  metadata:
-    items[2]: a,b
-```
-
-### 路径展开
-
-在解码时从折叠的键还原嵌套结构：
-
-```bash
-toon data.toon --expandPaths safe -o output.json
-```
-
-这与 `--keyFolding safe` 搭配使用，可实现无损的往返转换。
-
-### 往返转换工作流
-
-```bash
-# 使用折叠进行编码
-toon input.json --keyFolding safe -o compressed.toon
-
-# 使用展开进行解码（恢复原始结构）
-toon compressed.toon --expandPaths safe -o output.json
-
-# 校验往返转换结果
-diff input.json output.json
-```
-
 ### 组合选项
 
 组合使用多个选项以获得最大效率：
 
 ```bash
-# 键折叠 + 制表符分隔 + 统计信息
-toon data.json --keyFolding safe --delimiter $'\t' --stats -o output.toon
+# 制表符分隔 + 统计信息
+toon data.json --delimiter $'\t' --stats -o output.toon
 ```

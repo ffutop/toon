@@ -25,9 +25,9 @@ TOON 提供了结构护栏：显式的 `[N]` 长度和 `{fields}` 首部，让�
 
 ```toon
 users[3]{id,name,role,lastLogin}:
-  1,Alice,admin,"2025-01-15T10:30:00Z"
+  1,Ada,admin,"2025-01-15T10:30:00Z"
   2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Charlie,user,"2025-01-13T09:45:00Z"
+  3,Alice,user,"2025-01-13T09:45:00Z"
 ```
 
 任务：总结各用户的角色及其最近的活跃情况。
@@ -52,9 +52,9 @@ users[3]{id,name,role,lastLogin}:
 
 ```toon
 users[3]{id,name,role,lastLogin}:
-  1,Alice,admin,"2025-01-15T10:30:00Z"
+  1,Ada,admin,"2025-01-15T10:30:00Z"
   2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Charlie,user,"2025-01-13T09:45:00Z"
+  3,Alice,user,"2025-01-13T09:45:00Z"
 ```
 
 任务：仅以 TOON 格式返回角色为 "user" 的用户。使用相同的首部格式。将 [N] 设为与行数一致。只输出代码块。
@@ -65,7 +65,7 @@ users[3]{id,name,role,lastLogin}:
 ```toon
 users[2]{id,name,role,lastLogin}:
   2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Charlie,user,"2025-01-13T09:45:00Z"
+  3,Alice,user,"2025-01-13T09:45:00Z"
 ```
 
 模型将 `[N]` 调整为 `2`，并生成了两行数据。
