@@ -22,7 +22,7 @@ Standard JSON is verbose and token-expensive. For uniform arrays of objects, JSO
 ```json
 {
   "users": [
-    { "id": 1, "name": "Alice", "role": "admin" },
+    { "id": 1, "name": "Ada", "role": "admin" },
     { "id": 2, "name": "Bob", "role": "user" }
   ]
 }
@@ -33,7 +33,7 @@ YAML already reduces some redundancy with indentation instead of braces:
 ```yaml
 users:
   - id: 1
-    name: Alice
+    name: Ada
     role: admin
   - id: 2
     name: Bob
@@ -44,7 +44,7 @@ TOON goes further by declaring fields once and streaming data as rows:
 
 ```yaml
 users[2]{id,name,role}:
-  1,Alice,admin
+  1,Ada,admin
   2,Bob,user
 ```
 
@@ -200,7 +200,7 @@ import { encode } from '@toon-format/toon'
 
 const data = {
   users: [
-    { id: 1, name: 'Alice', role: 'admin' },
+    { id: 1, name: 'Ada', role: 'admin' },
     { id: 2, name: 'Bob', role: 'user' }
   ]
 }
@@ -212,7 +212,7 @@ console.log(encode(data))
 
 ```yaml
 users[2]{id,name,role}:
-  1,Alice,admin
+  1,Ada,admin
   2,Bob,user
 ```
 
@@ -225,7 +225,7 @@ import { decode } from '@toon-format/toon'
 
 const toon = `
 users[2]{id,name,role}:
-  1,Alice,admin
+  1,Ada,admin
   2,Bob,user
 `
 
@@ -238,7 +238,7 @@ console.log(JSON.stringify(data, null, 2))
 ```json
 {
   "users": [
-    { "id": 1, "name": "Alice", "role": "admin" },
+    { "id": 1, "name": "Ada", "role": "admin" },
     { "id": 2, "name": "Bob", "role": "user" }
   ]
 }
@@ -248,4 +248,4 @@ Round-tripping is lossless: `decode(encode(x))` always equals `x` (after normali
 
 ## Where to Go Next
 
-Now that you've seen your first TOON document, read the [Format Overview](/guide/format-overview) for complete syntax details (objects, arrays, quoting rules, key folding), then explore [Using TOON with LLMs](/guide/llm-prompts) to see how to use it effectively in prompts. For implementation details, check the [API Reference](/reference/api) (TypeScript) or the [Specification](/reference/spec) (language-agnostic normative rules).
+Now that you've seen your first TOON document, read the [Format Overview](/guide/format-overview) for complete syntax details (objects, arrays, tabular forms, quoting rules), then explore [Using TOON with LLMs](/guide/llm-prompts) to see how to use it effectively in prompts. For implementation details, check the [API Reference](/reference/api) (TypeScript) or the [Specification](/reference/spec) (language-agnostic normative rules).

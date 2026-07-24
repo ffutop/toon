@@ -38,9 +38,7 @@ import { encode } from '@toon-format/toon'
 
 const toon = encode(data, {
   indent: 2,
-  delimiter: ',',
-  keyFolding: 'off',
-  flattenDepth: Infinity
+  delimiter: ','
 })
 ```
 
@@ -198,7 +196,7 @@ type EncodeReplacer = (
 import { encode } from '@toon-format/toon'
 
 const data = {
-  user: { name: 'Alice', password: 'secret123', email: 'alice@example.com' }
+  user: { name: 'Ada', password: 'secret123', email: 'ada@example.com' }
 }
 
 function replacer(key, value) {
@@ -214,8 +212,8 @@ console.log(encode(data, { replacer }))
 
 ```yaml
 user:
-  name: Alice
-  email: alice@example.com
+  name: Ada
+  email: ada@example.com
 ```
 
 **Transforming values:**
@@ -291,8 +289,7 @@ import { decode } from '@toon-format/toon'
 
 const data = decode(toon, {
   indent: 2,
-  strict: true,
-  expandPaths: 'off'
+  strict: true
 })
 ```
 
@@ -337,7 +334,7 @@ console.log(data)
 
 Decodes TOON format from pre-split lines into a JavaScript value. This is a streaming-friendly wrapper around the event-based decoder that builds the full value in memory.
 
-Useful when you already have lines as an array or iterable (e.g., from file streams, readline interfaces, or network responses) and want the standard decode behavior with path expansion support.
+Useful when you already have lines as an array or iterable (e.g., from file streams, readline interfaces, or network responses) and want the standard decode behavior.
 
 #### Parameters
 
@@ -357,9 +354,9 @@ Returns a `JsonValue` (the parsed JavaScript value: object, array, or primitive)
 ```ts
 import { decodeFromLines } from '@toon-format/toon'
 
-const lines = ['name: Alice', 'age: 30']
+const lines = ['name: Ada', 'age: 30']
 const value = decodeFromLines(lines)
-// { name: 'Alice', age: 30 }
+// { name: 'Ada', age: 30 }
 ```
 
 **Streaming from Node.js readline:**
@@ -378,27 +375,18 @@ const value = decodeFromLines(rl)
 console.log(value)
 ```
 
-**With path expansion:**
-
-```ts
-const lines = ['user.name: Alice', 'user.age: 30']
-const value = decodeFromLines(lines, { expandPaths: 'safe' })
-// { user: { name: 'Alice', age: 30 } }
-```
-
 ### Choosing the Right Decoder
 
-| Function | Input | Output | Async | Path Expansion | Use When |
-|----------|-------|--------|-------|----------------|----------|
-| `decode()` | String | Value | No | Yes | You have a complete TOON string |
-| `decodeFromLines()` | Lines | Value | No | Yes | You have lines and want the full value |
-| `decodeStreamSync()` | Lines | Events | No | No | You need event-by-event processing (sync) |
-| `decodeStream()` | Lines | Events | Yes | No | You need event-by-event processing (async) |
+| Function | Input | Output | Async | Use When |
+|----------|-------|--------|-------|----------|
+| `decode()` | String | Value | No | You have a complete TOON string |
+| `decodeFromLines()` | Lines | Value | No | You have lines and want the full value |
+| `decodeStreamSync()` | Lines | Events | No | You need event-by-event processing (sync) |
+| `decodeStream()` | Lines | Events | Yes | You need event-by-event processing (async) |
 
 ::: info Key Differences
 
 * **Value vs. Events**: Functions ending in `Stream` yield events without building the full value in memory.
-* **Path expansion**: Only `decode()` and `decodeFromLines()` support `expandPaths: 'safe'`.
 * **Async support**: Only `decodeStream()` accepts async iterables (useful for file/network streams).
   :::
 
@@ -412,8 +400,6 @@ Useful for streaming processing, custom transformations, or memory-efficient par
 
 ::: tip Event Streaming
 This is a low-level API that returns individual parse events. For most use cases, [`decodeFromLines()`](#decodefromlines-lines-options) or [`decode()`](#decode-input-options) are more convenient.
-
-Path expansion (`expandPaths: 'safe'`) is **not supported** in streaming mode since it requires the full value tree.
 :::
 
 #### Parameters
@@ -434,7 +420,7 @@ Returns an `Iterable<JsonStreamEvent>` that yields structured events (see [TypeS
 ```ts
 import { decodeStreamSync } from '@toon-format/toon'
 
-const lines = ['name: Alice', 'age: 30']
+const lines = ['name: Ada', 'age: 30']
 
 for (const event of decodeStreamSync(lines)) {
   console.log(event)
@@ -443,7 +429,7 @@ for (const event of decodeStreamSync(lines)) {
 // Output:
 // { type: 'startObject' }
 // { type: 'key', key: 'name' }
-// { type: 'primitive', value: 'Alice' }
+// { type: 'primitive', value: 'Ada' }
 // { type: 'key', key: 'age' }
 // { type: 'primitive', value: 30 }
 // { type: 'endObject' }
@@ -454,7 +440,7 @@ for (const event of decodeStreamSync(lines)) {
 ```ts
 import { decodeStreamSync } from '@toon-format/toon'
 
-const lines = ['users[2]{id,name}:', '  1,Alice', '  2,Bob']
+const lines = ['users[2]{id,name}:', '  1,Ada', '  2,Bob']
 let userCount = 0
 
 for (const event of decodeStreamSync(lines)) {
@@ -557,8 +543,6 @@ Configuration for [`encode()`](#encode-input-options) and [`encodeLines()`](#enc
 |--------|------|---------|-------------|
 | `indent` | `number` | `2` | Number of spaces per indentation level |
 | `delimiter` | `','` | `'\t'` | `'\|'` | `','` | Delimiter for array values and tabular rows |
-| `keyFolding` | `'off'` | `'safe'` | `'off'` | Enable key folding to collapse single-key wrapper chains into dotted paths |
-| `flattenDepth` | `number` | `Infinity` | Maximum number of segments to fold when `keyFolding` is enabled (values 0-1 have no practical effect) |
 | `replacer` | `EncodeReplacer` | `undefined` | Optional hook to transform or omit values before encoding (see [Replacer Function](#replacer-function)) |
 
 **Delimiter options:**
@@ -589,24 +573,21 @@ Configuration for [`decode()`](#decode-input-options) and [`decodeFromLines()`](
 |--------|------|---------|-------------|
 | `indent` | `number` | `2` | Expected number of spaces per indentation level |
 | `strict` | `boolean` | `true` | Enable strict validation (array counts, indentation, delimiter consistency) |
-| `expandPaths` | `'off'` | `'safe'` | `'off'` | Enable path expansion to reconstruct dotted keys into nested objects (pairs with `keyFolding: 'safe'`) |
 
 By default (`strict: true`), the decoder validates input strictly:
 
 * **Invalid escape sequences**: Throws on `\x`, unterminated strings, lone-surrogate `\uXXXX`
 * **Syntax errors**: Throws on missing colons, malformed headers
 * **Array length mismatches**: Throws when declared length doesn't match actual count
+* **Keyed tabular mismatches**: Throws when the entry-row count doesn't match the declared count or a row's cell count doesn't match the header's leaf fields (§9.5)
 * **Header delimiter mismatch**: Throws when the bracket-declared delimiter differs from the field-list delimiter (§14.2)
-* **Indentation errors**: Throws when leading spaces aren't exact multiples of `indent`
-* **Header structure**: Throws on leading-zero or non-integer array lengths and on intervening content between bracket/fields/colon
-* **Duplicate sibling keys**: Throws when an object has two children with the same key (§14.4)
-* **Path-expansion conflicts**: When `expandPaths: 'safe'` is set, throws on overlapping dotted paths that would collide
+* **Indentation errors**: Throws when leading spaces aren't exact multiples of `indent`, on depth jumps of more than one level into a nested scope, and on over-indented lines that belong to no scope (§14.2) – strict decoding never silently discards input, including trailing content after a completed root array or keyed tabular root (§5)
+* **Header structure**: Throws on leading-zero or non-integer array lengths, malformed keyed markers, and intervening content between bracket/fields/colon
+* **Duplicate sibling keys**: Throws when an object has two children with the same key, including duplicate entry keys (§14.3)
 
 All decode errors are thrown as [`ToonDecodeError`](#error-handling) instances with structured `line` and `source` fields.
 
-Set `strict: false` to skip these checks. Duplicate sibling keys and path-expansion conflicts then resolve with last-write-wins in document order.
-
-See [Key Folding & Path Expansion](#key-folding-path-expansion) for more details on path expansion behavior and conflict resolution.
+Set `strict: false` to skip these checks. Duplicate sibling keys then resolve with last-write-wins in document order.
 
 ### `DecodeStreamOptions`
 
@@ -616,10 +597,6 @@ Configuration for [`decodeStreamSync()`](#decodestreamsync-lines-options) and [`
 |--------|------|---------|-------------|
 | `indent` | `number` | `2` | Expected number of spaces per indentation level |
 | `strict` | `boolean` | `true` | Enable strict validation (array counts, indentation, delimiter consistency) |
-
-::: warning Path Expansion Not Supported
-Path expansion requires building the full value tree, which is incompatible with event streaming. Use [`decodeFromLines()`](#decodefromlines-lines-options) if you need path expansion.
-:::
 
 ## TypeScript Types
 
@@ -633,7 +610,7 @@ type JsonStreamEvent
     | { type: 'endObject' }
     | { type: 'startArray', length: number }
     | { type: 'endArray' }
-    | { type: 'key', key: string, wasQuoted?: boolean }
+    | { type: 'key', key: string }
     | { type: 'primitive', value: JsonPrimitive }
 ```
 
@@ -675,7 +652,7 @@ import { decode, encode } from '@toon-format/toon'
 
 const original = {
   users: [
-    { id: 1, name: 'Alice', role: 'admin' },
+    { id: 1, name: 'Ada', role: 'admin' },
     { id: 2, name: 'Bob', role: 'user' }
   ]
 }
@@ -686,68 +663,6 @@ const restored = decode(toon)
 console.log(JSON.stringify(original) === JSON.stringify(restored))
 // true
 ```
-
-**With Key Folding:**
-
-```ts
-import { decode, encode } from '@toon-format/toon'
-
-const original = { data: { metadata: { items: ['a', 'b'] } } }
-
-// Encode with folding
-const toon = encode(original, { keyFolding: 'safe' })
-// → "data.metadata.items[2]: a,b"
-
-// Decode with expansion
-const restored = decode(toon, { expandPaths: 'safe' })
-// → { data: { metadata: { items: ['a', 'b'] } } }
-
-console.log(JSON.stringify(original) === JSON.stringify(restored))
-// true
-```
-
-### Key Folding & Path Expansion
-
-**Key Folding** (`keyFolding: 'safe'`) collapses single-key wrapper chains during encoding:
-
-```ts
-import { encode } from '@toon-format/toon'
-
-const data = { data: { metadata: { items: ['a', 'b'] } } }
-
-// Without folding
-encode(data)
-// data:
-//   metadata:
-//     items[2]: a,b
-
-// With folding
-encode(data, { keyFolding: 'safe' })
-// data.metadata.items[2]: a,b
-```
-
-**Path Expansion** (`expandPaths: 'safe'`) reverses this during decoding:
-
-```ts
-import { decode } from '@toon-format/toon'
-
-const toon = 'data.metadata.items[2]: a,b'
-
-const data = decode(toon, { expandPaths: 'safe' })
-console.log(data)
-// { data: { metadata: { items: ['a', 'b'] } } }
-```
-
-**Expansion Conflict Resolution:**
-
-When multiple expanded keys construct overlapping paths, the decoder merges them recursively:
-
-* **Object + Object**: Deep merge recursively
-* **Object + Non-object** (array or primitive): Conflict
-  * With `strict: true` (default): Error
-  * With `strict: false`: Last-write-wins (LWW)
-
-Duplicate sibling keys (independent of `expandPaths`) follow the same policy: strict mode throws, lenient mode keeps the last value seen.
 
 ### Delimiter Strategies
 
@@ -761,10 +676,10 @@ items[2	]{sku	name	qty	price}:
   B2	Gadget	1	14.5
 ```
 
-For maximum token savings on large tabular data, combine tab delimiters with key folding:
+For maximum token savings on large tabular data, use tab delimiters:
 
 ```ts
-encode(data, { delimiter: '\t', keyFolding: 'safe' })
+encode(data, { delimiter: '\t' })
 ```
 
 **Choosing a Delimiter:**

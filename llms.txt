@@ -7,7 +7,7 @@
 ### 指南
 
 - [快速开始](/zh/guide/getting-started.md): TOON 是什么、何时使用它，以及使用 TypeScript 库进行编码/解码的第一个示例。
-- [格式概览](/zh/guide/format-overview.md): 通过具体示例了解 TOON 语法——对象、数组、首部、键折叠和引号规则。
+- [格式概览](/zh/guide/format-overview.md): 通过具体示例了解 TOON 语法——对象、数组、表格首部、注释和引号规则。
 - [在大语言模型中使用 TOON](/zh/guide/llm-prompts.md): 向大语言模型发送 TOON 以及校验其生成的 TOON 的提示策略，附带示例。
 - [基准测试](/zh/guide/benchmarks.md): TOON 在混合结构与纯扁平结构两个赛道上的检索准确率和 Token 使用效率结果。
 
@@ -24,14 +24,14 @@
 ### 参考
 
 - [API 参考](/zh/reference/api.md): @toon-format/toon 的 TypeScript 与 JavaScript 编码/解码函数、选项、错误类型及流式解码器。
-- [语法速查表](/zh/reference/syntax-cheatsheet.md): 快速了解 JSON 到 TOON 的映射关系，包括对象、数组、引号、键折叠和类型转换。
+- [语法速查表](/zh/reference/syntax-cheatsheet.md): 快速了解 JSON 到 TOON 的映射关系，包括对象、数组、表格形式、引号和类型转换。
 - [规范](/zh/reference/spec.md): TOON 规范导览：章节结构、合规性检查清单、媒体类型和版本管理。
 - [TOON 与 JSON 对比：字节级效率模型](/zh/reference/efficiency-formalization.md): TOON 与 JSON 在不同结构类型下的字节级开销模型，包含公式和实例推导。
 
 ### 指南
 
 - [快速开始](/zh/guide/getting-started.md): TOON 是什么、何时使用它，以及使用 TypeScript 库进行编码/解码的第一个示例。
-- [格式概览](/zh/guide/format-overview.md): 通过具体示例了解 TOON 语法——对象、数组、首部、键折叠和引号规则。
+- [格式概览](/zh/guide/format-overview.md): 通过具体示例了解 TOON 语法——对象、数组、表格首部、注释和引号规则。
 - [在大语言模型中使用 TOON](/zh/guide/llm-prompts.md): 向大语言模型发送 TOON 以及校验其生成的 TOON 的提示策略，附带示例。
 - [基准测试](/zh/guide/benchmarks.md): TOON 在混合结构与纯扁平结构两个赛道上的检索准确率和 Token 使用效率结果。
 
@@ -48,14 +48,14 @@
 ### 参考
 
 - [API 参考](/zh/reference/api.md): @toon-format/toon 的 TypeScript 与 JavaScript 编码/解码函数、选项、错误类型及流式解码器。
-- [语法速查表](/zh/reference/syntax-cheatsheet.md): 快速了解 JSON 到 TOON 的映射关系，包括对象、数组、引号、键折叠和类型转换。
+- [语法速查表](/zh/reference/syntax-cheatsheet.md): 快速了解 JSON 到 TOON 的映射关系，包括对象、数组、表格形式、引号和类型转换。
 - [规范](/zh/reference/spec.md): TOON 规范导览：章节结构、合规性检查清单、媒体类型和版本管理。
 - [TOON 与 JSON 对比：字节级效率模型](/zh/reference/efficiency-formalization.md): TOON 与 JSON 在不同结构类型下的字节级开销模型，包含公式和实例推导。
 
 ### 指南
 
 - [快速开始](/zh/guide/getting-started.md): TOON 是什么、何时使用它，以及使用 TypeScript 库进行编码/解码的第一个示例。
-- [格式概览](/zh/guide/format-overview.md): 通过具体示例了解 TOON 语法——对象、数组、首部、键折叠和引号规则。
+- [格式概览](/zh/guide/format-overview.md): 通过具体示例了解 TOON 语法——对象、数组、表格首部、注释和引号规则。
 - [在大语言模型中使用 TOON](/zh/guide/llm-prompts.md): 向大语言模型发送 TOON 以及校验其生成的 TOON 的提示策略，附带示例。
 - [基准测试](/zh/guide/benchmarks.md): TOON 在混合结构与纯扁平结构两个赛道上的检索准确率和 Token 使用效率结果。
 
@@ -72,14 +72,14 @@
 ### 参考
 
 - [API 参考](/zh/reference/api.md): @toon-format/toon 的 TypeScript 与 JavaScript 编码/解码函数、选项、错误类型及流式解码器。
-- [语法速查表](/zh/reference/syntax-cheatsheet.md): 快速了解 JSON 到 TOON 的映射关系，包括对象、数组、引号、键折叠和类型转换。
+- [语法速查表](/zh/reference/syntax-cheatsheet.md): 快速了解 JSON 到 TOON 的映射关系，包括对象、数组、表格形式、引号和类型转换。
 - [规范](/zh/reference/spec.md): TOON 规范导览：章节结构、合规性检查清单、媒体类型和版本管理。
 - [TOON 与 JSON 对比：字节级效率模型](/zh/reference/efficiency-formalization.md): TOON 与 JSON 在不同结构类型下的字节级开销模型，包含公式和实例推导。
 
 ### 指南
 
 - [快速开始](/zh/guide/getting-started.md): TOON 是什么、何时使用它，以及使用 TypeScript 库进行编码/解码的第一个示例。
-- [格式概览](/zh/guide/format-overview.md): 通过具体示例了解 TOON 语法——对象、数组、首部、键折叠和引号规则。
+- [格式概览](/zh/guide/format-overview.md): 通过具体示例了解 TOON 语法——对象、数组、表格首部、注释和引号规则。
 - [在大语言模型中使用 TOON](/zh/guide/llm-prompts.md): 向大语言模型发送 TOON 以及校验其生成的 TOON 的提示策略，附带示例。
 - [基准测试](/zh/guide/benchmarks.md): TOON 在混合结构与纯扁平结构两个赛道上的检索准确率和 Token 使用效率结果。
 
@@ -96,7 +96,7 @@
 ### 参考
 
 - [API 参考](/zh/reference/api.md): @toon-format/toon 的 TypeScript 与 JavaScript 编码/解码函数、选项、错误类型及流式解码器。
-- [语法速查表](/zh/reference/syntax-cheatsheet.md): 快速了解 JSON 到 TOON 的映射关系，包括对象、数组、引号、键折叠和类型转换。
+- [语法速查表](/zh/reference/syntax-cheatsheet.md): 快速了解 JSON 到 TOON 的映射关系，包括对象、数组、表格形式、引号和类型转换。
 - [规范](/zh/reference/spec.md): TOON 规范导览：章节结构、合规性检查清单、媒体类型和版本管理。
 - [TOON 与 JSON 对比：字节级效率模型](/zh/reference/efficiency-formalization.md): TOON 与 JSON 在不同结构类型下的字节级开销模型，包含公式和实例推导。
 
@@ -105,12 +105,12 @@
 - [API Reference](/en/reference/api.md): TypeScript and JavaScript encode and decode functions, options, error types, and streaming decoders for @toon-format/toon.
 - [Benchmarks](/en/guide/benchmarks.md): Retrieval accuracy and token efficiency results for TOON across mixed-structure and flat-only tracks.
 - [Command Line Interface](/en/cli.md): Convert JSON to TOON and back from the command line, with token statistics, streaming, and delimiter options.
-- [Format Overview](/en/guide/format-overview.md): TOON syntax with concrete examples – objects, arrays, headers, key folding, and quoting rules.
+- [Format Overview](/en/guide/format-overview.md): TOON syntax with concrete examples – objects, arrays, tabular headers, comments, and quoting rules.
 - [Getting Started](/en/guide/getting-started.md): What TOON is, when to use it, and a first encode/decode example with the TypeScript library.
 - [Implementations](/en/ecosystem/implementations.md): Official and community TOON implementations across languages, plus contribution pointers.
 - [Playground](/en/playground.md)
 - [Specification](/en/reference/spec.md): Guided tour of the TOON specification – sections, conformance checklists, media type, and versioning.
-- [Syntax Cheatsheet](/en/reference/syntax-cheatsheet.md): JSON-to-TOON mappings at a glance for objects, arrays, quoting, key folding, and type conversions.
+- [Syntax Cheatsheet](/en/reference/syntax-cheatsheet.md): JSON-to-TOON mappings at a glance for objects, arrays, tabular forms, quoting, and type conversions.
 - [Tools and Playgrounds](/en/ecosystem/tools-and-playgrounds.md): TOON playgrounds, CLI, editor support, and ecosystem tools.
 - [TOON vs JSON: Byte-Level Efficiency Model](/en/reference/efficiency-formalization.md): Mathematical model of TOON's byte-level overhead vs JSON across structure families, with formulas and worked examples.
 - [Using TOON with LLMs](/en/guide/llm-prompts.md): Prompting strategies for sending TOON to LLMs and validating TOON they generate, with examples.

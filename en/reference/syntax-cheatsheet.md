@@ -1,7 +1,7 @@
 ---
 url: /en/reference/syntax-cheatsheet.md
 description: >-
-  JSON-to-TOON mappings at a glance for objects, arrays, quoting, key folding,
+  JSON-to-TOON mappings at a glance for objects, arrays, tabular forms, quoting,
   and type conversions.
 ---
 
@@ -265,10 +265,11 @@ Strings **must** be quoted if they:
 * Are empty (`""`)
 * Have leading or trailing whitespace
 * Equal `true`, `false`, or `null` (case-sensitive)
-* Look like numbers (e.g., `"42"`, `"-3.14"`, `"1e-6"`, `"05"`)
+* Look like numbers (e.g., `"42"`, `"-3.14"`, `"1e-6"`, `"05"`, `"+1"`)
 * Contain special characters: `:`, `"`, `\`, `[`, `]`, `{`, `}`, or any control character (U+0000–U+001F, including newline/tab/CR)
 * Contain the relevant delimiter – the active delimiter inside an array scope, or the document delimiter (comma by default) for object field values
 * Equal `"-"` or start with `"-"` followed by any character
+* Equal `"#"` or start with `"#"` (the line would read as a comment)
 
 Otherwise, strings can be unquoted. Unicode and emoji are safe:
 
@@ -313,19 +314,30 @@ key[N]{field1,field2,field3}:
 * `{fields}` = column names
 * Default delimiter: comma
 
+### Nested Field Groups
+
+```
+key[N]{id,customer{name,country},total}:
+```
+
+* `customer{…}` = a column of uniform sub-objects folded into the header
+* Rows stay flat: cells follow a depth-first walk of the field list
+
+See [Format Overview – Nested Field Groups](/guide/format-overview#nested-field-groups) for details.
+
 ### Alternative Delimiters
 
 ::: code-group
 
 ```yaml [Tab Delimiter]
 items[2	]{id	name}:
-  1	Alice
+  1	Ada
   2	Bob
 ```
 
 ```yaml [Pipe Delimiter]
 items[2|]{id|name}:
-  1|Alice
+  1|Ada
   2|Bob
 ```
 
@@ -333,23 +345,26 @@ items[2|]{id|name}:
 
 The delimiter symbol appears inside the brackets and braces.
 
-## Key Folding (Optional)
+## Keyed Tabular Objects
 
-Standard nesting:
-
-```yaml
-data:
-  metadata:
-    items[2]: a,b
-```
-
-With key folding (`keyFolding: 'safe'`):
+An object of uniform objects collapses into a keyed header with one entry row per entry:
 
 ```yaml
-data.metadata.items[2]: a,b
+users[2:]{age,city}:
+  alice: 30,Berlin
+  bob: 25,Paris
 ```
 
-See [Format Overview – Key Folding](/guide/format-overview#key-folding-optional) for details.
+See [Format Overview – Keyed Tabular Objects](/guide/format-overview#keyed-tabular-objects) for details.
+
+## Comments
+
+Lines whose first non-space character is `#` are stripped before decoding:
+
+```yaml
+# Full-line comments only; encoders never emit them
+host: example.com
+```
 
 ## Type Conversions
 

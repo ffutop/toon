@@ -20,7 +20,7 @@ TOON 结合了 YAML 基于缩进的嵌套对象结构，以及 CSV 风格的表�
 ```json
 {
   "users": [
-    { "id": 1, "name": "Alice", "role": "admin" },
+    { "id": 1, "name": "Ada", "role": "admin" },
     { "id": 2, "name": "Bob", "role": "user" }
   ]
 }
@@ -31,7 +31,7 @@ YAML 通过缩进代替大括号减少了一些冗余：
 ```yaml
 users:
   - id: 1
-    name: Alice
+    name: Ada
     role: admin
   - id: 2
     name: Bob
@@ -42,7 +42,7 @@ TOON 更进一步，只声明一次字段，然后数据逐行流式呈现：
 
 ```yaml
 users[2]{id,name,role}:
-  1,Alice,admin
+  1,Ada,admin
   2,Bob,user
 ```
 
@@ -198,7 +198,7 @@ import { encode } from '@toon-format/toon'
 
 const data = {
   users: [
-    { id: 1, name: 'Alice', role: 'admin' },
+    { id: 1, name: 'Ada', role: 'admin' },
     { id: 2, name: 'Bob', role: 'user' }
   ]
 }
@@ -210,7 +210,7 @@ console.log(encode(data))
 
 ```yaml
 users[2]{id,name,role}:
-  1,Alice,admin
+  1,Ada,admin
   2,Bob,user
 ```
 
@@ -223,7 +223,7 @@ import { decode } from '@toon-format/toon'
 
 const toon = `
 users[2]{id,name,role}:
-  1,Alice,admin
+  1,Ada,admin
   2,Bob,user
 `
 
@@ -236,7 +236,7 @@ console.log(JSON.stringify(data, null, 2))
 ```json
 {
   "users": [
-    { "id": 1, "name": "Alice", "role": "admin" },
+    { "id": 1, "name": "Ada", "role": "admin" },
     { "id": 2, "name": "Bob", "role": "user" }
   ]
 }
@@ -246,4 +246,4 @@ console.log(JSON.stringify(data, null, 2))
 
 ## 接下来去哪里
 
-现在你已经看过了第一个 TOON 文档，接下来可以阅读 [格式概览](/zh/guide/format-overview) 了解完整的语法细节（对象、数组、引号规则、键折叠），然后了解 [在大语言模型中使用 TOON](/zh/guide/llm-prompts)，看看如何在提示词中有效使用它。想了解实现细节，可以查阅 [API 参考](/zh/reference/api)(TypeScript)或 [规范](/zh/reference/spec)（与语言无关的规范性规则）。
+现在你已经看过了第一个 TOON 文档，接下来可以阅读 [格式概览](/zh/guide/format-overview) 了解完整的语法细节（对象、数组、表格形式、引号规则），然后了解 [在大语言模型中使用 TOON](/zh/guide/llm-prompts)，看看如何在提示词中有效使用它。想了解实现细节，可以查阅 [API 参考](/zh/reference/api)(TypeScript)或 [规范](/zh/reference/spec)（与语言无关的规范性规则）。

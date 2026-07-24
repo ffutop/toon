@@ -20,7 +20,7 @@ TOON 结合了 YAML 基于缩进的嵌套对象结构，以及 CSV 风格的表�
 ```json
 {
   "users": [
-    { "id": 1, "name": "Alice", "role": "admin" },
+    { "id": 1, "name": "Ada", "role": "admin" },
     { "id": 2, "name": "Bob", "role": "user" }
   ]
 }
@@ -31,7 +31,7 @@ YAML 通过缩进代替大括号减少了一些冗余：
 ```yaml
 users:
   - id: 1
-    name: Alice
+    name: Ada
     role: admin
   - id: 2
     name: Bob
@@ -42,7 +42,7 @@ TOON 更进一步，只声明一次字段，然后数据逐行流式呈现：
 
 ```yaml
 users[2]{id,name,role}:
-  1,Alice,admin
+  1,Ada,admin
   2,Bob,user
 ```
 
@@ -198,7 +198,7 @@ import { encode } from '@toon-format/toon'
 
 const data = {
   users: [
-    { id: 1, name: 'Alice', role: 'admin' },
+    { id: 1, name: 'Ada', role: 'admin' },
     { id: 2, name: 'Bob', role: 'user' }
   ]
 }
@@ -210,7 +210,7 @@ console.log(encode(data))
 
 ```yaml
 users[2]{id,name,role}:
-  1,Alice,admin
+  1,Ada,admin
   2,Bob,user
 ```
 
@@ -223,7 +223,7 @@ import { decode } from '@toon-format/toon'
 
 const toon = `
 users[2]{id,name,role}:
-  1,Alice,admin
+  1,Ada,admin
   2,Bob,user
 `
 
@@ -236,7 +236,7 @@ console.log(JSON.stringify(data, null, 2))
 ```json
 {
   "users": [
-    { "id": 1, "name": "Alice", "role": "admin" },
+    { "id": 1, "name": "Ada", "role": "admin" },
     { "id": 2, "name": "Bob", "role": "user" }
   ]
 }
@@ -246,13 +246,13 @@ console.log(JSON.stringify(data, null, 2))
 
 ## 接下来去哪里
 
-现在你已经看过了第一个 TOON 文档，接下来可以阅读 [格式概览](/zh/guide/format-overview) 了解完整的语法细节（对象、数组、引号规则、键折叠），然后了解 [在大语言模型中使用 TOON](/zh/guide/llm-prompts)，看看如何在提示词中有效使用它。想了解实现细节，可以查阅 [API 参考](/zh/reference/api)(TypeScript)或 [规范](/zh/reference/spec)（与语言无关的规范性规则）。
+现在你已经看过了第一个 TOON 文档，接下来可以阅读 [格式概览](/zh/guide/format-overview) 了解完整的语法细节（对象、数组、表格形式、引号规则），然后了解 [在大语言模型中使用 TOON](/zh/guide/llm-prompts)，看看如何在提示词中有效使用它。想了解实现细节，可以查阅 [API 参考](/zh/reference/api)(TypeScript)或 [规范](/zh/reference/spec)（与语言无关的规范性规则）。
 
 ---
 
 ---
 url: /zh/guide/format-overview.md
-description: 通过具体示例了解 TOON 语法——对象、数组、首部、键折叠和引号规则。
+description: 通过具体示例了解 TOON 语法——对象、数组、表格首部、注释和引号规则。
 ---
 
 # 格式概览
@@ -307,6 +307,28 @@ user:
 
 根级别的空对象会产生一个空文档（没有任何行）。嵌套的空对象则表示为单独的 `key:`，没有子内容。
 
+### 带键的表格化对象
+
+当一个对象至少包含两个条目，且这些条目的值都是结构一致的对象（拥有相同键，值为基本类型或嵌套的一致对象）时，它会折叠为带键的表格形式：共享字段结构只在首部中出现一次，每个条目成为一行，并保留自身的键：
+
+```yaml
+users[2:]{age,city}:
+  alice: 30,Berlin
+  bob: 25,Paris
+```
+
+长度后紧跟的冒号（`[2:]`）标记这是带键首部，`[N]` 声明条目数量。每个条目行都是 `entrykey: cell,cell,…`：条目键后接该条目值按字段顺序展开后的叶子值。
+
+当根对象本身符合条件时，会省略外层键：
+
+```text
+[2:]{age,city}:
+  alice: 30,Berlin
+  bob: 25,Paris
+```
+
+不满足条件的对象会保持嵌套形式不变：单条目对象、值的形状混杂或包含基本类型/数组/空对象的对象都不会折叠。实际使用中，这会让大多数配置风格的映射保持原样（[规范 §9.5](https://github.com/toon-format/spec/blob/main/SPEC.md#95-keyed-objects--tabular-form)）。
+
 ## 数组
 
 TOON 会检测数组结构，并选择最高效的表示方式。数组总是在方括号中声明其长度：`[N]`。
@@ -333,10 +355,10 @@ items[2]{sku,qty,price}:
   B2,1,14.5
 ```
 
-```yaml [值中包含空格]
+```yaml [空格与引号]
 users[2]{id,name,role}:
-  1,Alice Admin,admin
-  2,"Bob Smith",user
+  1,Ada Lovelace,admin
+  2,"Smith, Bob",user
 ```
 
 :::
@@ -347,10 +369,22 @@ users[2]{id,name,role}:
 * **字段名**：`{sku,qty,price}` 定义了各列
 * **生效分隔符**：逗号（默认）
 
-每一行的值都按字段列表的顺序排列，均为基本类型（字符串、数字、布尔值、null），彼此以分隔符隔开。
+每一行的值都按字段列表的顺序排列。值被编码为基本类型（字符串、数字、布尔值、null），并以分隔符隔开。
 
 > \[!NOTE]
-> 表格化格式需要满足三个条件：所有对象的字段集合完全相同（键相同，但每个对象内的顺序可以不同）；字段值仅包含基本类型（不允许嵌套数组或对象）；且每个对象至少包含一个键。如果数组中包含出现空对象 `{}`，则会回退到下文所述的展开列表形式。
+> 表格化格式需要满足：所有对象的字段集合完全相同（键相同，但每个对象内的顺序可以不同）；每个对象至少包含一个键；并且每一列要么是基本类型值，要么是结构一致的嵌套对象（见下文）。如果数组中包含空对象 `{}`，或某一列的值类型混杂，则会回退到下文所述的展开列表形式。
+
+### 嵌套字段组
+
+当某一列的值都是结构一致的子对象（每个元素中键相同，并且递归地只包含基本类型或结构一致的嵌套对象）时，该列会在首部中折叠为嵌套字段组，而行数据仍然保持扁平：
+
+```yaml
+orders[2]{id,customer{name,country},total}:
+  1,Ada,DE,9.99
+  2,Bob,FR,14.5
+```
+
+首部中的 `customer{name,country}` 声明了一个嵌套对象列；每一行的单元格按字段列表的深度优先顺序排列，因此第一笔订单中的 `Ada,DE` 会填入 `customer.name` 和 `customer.country`。嵌套深度不受限制（[规范 §9.3](https://github.com/toon-format/spec/blob/main/SPEC.md#93-arrays-of-objects--tabular-form)）。
 
 ### 混合与非一致数组
 
@@ -486,73 +520,17 @@ items[2|]{sku|name|qty|price}:
 > \[!TIP]
 > 制表符分隔通常比逗号分隔更高效地进行 token 化，尤其是在引号字符串较少的数据中。使用 `encode(data, { delimiter: '\t' })` 可以进一步节省 token。
 
-## 键折叠（可选）
+## 注释
 
-键折叠是一项可选的编码器特性（自规范 v1.5 起提供），它会将单键对象组成的链条折叠为以点分隔的路径，从而为深度嵌套的数据减少 token 消耗。
-
-### 基础折叠
-
-标准嵌套：
+解码器会在词法预处理阶段剥离所有第一个非空格字符为 `#` 的行，这一步发生在其他任何处理之前：
 
 ```yaml
-data:
-  metadata:
-    items[2]: a,b
+# Server configuration
+host: example.com
+port: 8080
 ```
 
-启用键折叠后(`keyFolding: 'safe'`)：
-
-```yaml
-data.metadata.items[2]: a,b
-```
-
-三个嵌套对象被折叠为一个以点分隔的键 `data.metadata.items`。
-
-### 折叠适用的条件
-
-一条对象链在满足以下条件时可以被折叠：
-
-* 链中的每个对象都恰好只有一个键（指向下一个对象或一个叶子值）
-* 叶子值是基本类型、数组或空对象
-* 所有片段都是合法的标识符片段（仅限字母、数字、下划线；片段内不能有点号）
-* 折叠后得到的键不会与已有的键发生冲突
-
-::: details 高级折叠规则
-**片段要求（safe 模式）：**
-
-* 所有被折叠的片段都必须匹配 `^[A-Za-z_][A-Za-z0-9_]*$`（不能包含点、连字符或其他特殊字符）
-* 任何片段都不能按规范 §7.3 加引号
-* 折叠后得到的键不能与同一深度下任何已有的同级字面键相同（避免冲突）
-
-**深度限制：**
-
-* `flattenDepth` 选项（默认：`Infinity`）控制要折叠多少个片段
-* `flattenDepth: 2` 只折叠两段的链：`{a: {b: val}}` → `a.b: val`
-* 小于 2 的值没有实际效果
-
-**通过路径展开实现往返转换：**
-若要在解码时还原原始结构，请使用 `expandPaths: 'safe'`。这会依据相同的安全规则，将带点号的键重新拆分为嵌套对象）[规范 §13.4](https://github.com/toon-format/spec/blob/main/SPEC.md#134-key-folding-and-path-expansion)）。
-:::
-
-### 通过路径展开实现往返转换
-
-在解码使用了键折叠的 TOON 时，启用路径展开以恢复嵌套结构：
-
-```ts
-import { decode, encode } from '@toon-format/toon'
-
-const original = { data: { metadata: { items: ['a', 'b'] } } }
-
-// 使用折叠进行编码
-const toon = encode(original, { keyFolding: 'safe' })
-// → "data.metadata.items[2]: a,b"
-
-// 使用展开进行解码
-const restored = decode(toon, { expandPaths: 'safe' })
-// → { data: { metadata: { items: ['a', 'b'] } } }
-```
-
-路径展开默认关闭，因此带点号的键在未显式启用该选项时会被视为字面键处理。
+注释只支持整行形式：一行中其他位置出现的 `#` 都是普通内容。注释也只在解码侧生效：编码器永远不会输出注释，并且以 `#` 开头的字符串值总会被加引号，因此编码器输出中不会出现可被解释为注释的行。表格行之间的注释不会终止该表格结构（[规范 §5.1](https://github.com/toon-format/spec/blob/main/SPEC.md#51-comment-lines)）。
 
 ## 引号与类型
 
@@ -563,10 +541,11 @@ TOON **只在必要时**才为字符串加引号，以最大化 token 效率。�
 * 空字符串(`""`)
 * 开头或结尾是空格字符
 * 值等于 `true`、`false` 或 `null`（区分大小写）
-* 看起来像数字（例如 `"42"`、`"-3.14"`、`"1e-6"`、`"05"`）
+* 看起来像数字（例如 `"42"`、`"-3.14"`、`"1e-6"`、`"05"`、`"+1"`）
 * 包含特殊字符：`:`、`"`、`\`、`[`、`]`、`{`、`}`，或任何控制字符（U+0000–U+001F，包括换行符/制表符/回车符）
 * 包含相关的分隔符（数组作用范围内为生效分隔符，其他情况下为文档级分隔符）
 * 值等于 `"-"`，或以 `"-"` 开头且后面还有其他字符
+* 值等于 `"#"`，或以 `"#"` 开头（该行会被视为注释）
 
 除上述情况，字符串都可以不加引号。Unicode、emoji 以及内部（非开头/结尾）带空格的字符串都可以安全地不加引号：
 
@@ -652,9 +631,9 @@ TOON 提供了结构护栏：显式的 `[N]` 长度和 `{fields}` 首部，让�
 
 ```toon
 users[3]{id,name,role,lastLogin}:
-  1,Alice,admin,"2025-01-15T10:30:00Z"
+  1,Ada,admin,"2025-01-15T10:30:00Z"
   2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Charlie,user,"2025-01-13T09:45:00Z"
+  3,Alice,user,"2025-01-13T09:45:00Z"
 ```
 
 任务：总结各用户的角色及其最近的活跃情况。
@@ -679,9 +658,9 @@ users[3]{id,name,role,lastLogin}:
 
 ```toon
 users[3]{id,name,role,lastLogin}:
-  1,Alice,admin,"2025-01-15T10:30:00Z"
+  1,Ada,admin,"2025-01-15T10:30:00Z"
   2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Charlie,user,"2025-01-13T09:45:00Z"
+  3,Alice,user,"2025-01-13T09:45:00Z"
 ```
 
 任务：仅以 TOON 格式返回角色为 "user" 的用户。使用相同的首部格式。将 [N] 设为与行数一致。只输出代码块。
@@ -692,7 +671,7 @@ users[3]{id,name,role,lastLogin}:
 ```toon
 users[2]{id,name,role,lastLogin}:
   2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Charlie,user,"2025-01-13T09:45:00Z"
+  3,Alice,user,"2025-01-13T09:45:00Z"
 ```
 
 模型将 `[N]` 调整为 `2`，并生成了两行数据。
@@ -1522,7 +1501,6 @@ cat data.toon | toon --decode
 * 使用与 `@toon-format/toon` 中 `decodeStream` API 相同的基于事件的流式解码器。
 * 流式写出 JSON token。
 * 内存中不会保留完整的 JSON 字符串。
-* 启用 `--expandPaths safe` 时，内部会回退为非流式解码，以便在写入 JSON 之前应用深度合并展开。
 
 以最小的内存占用处理大文件：
 
@@ -1555,9 +1533,6 @@ cat million-records.toon | toon --decode > output.json
 | `--indent <number>` | 缩进（默认：`2`） |
 | `--stats` | 显示 token 数量估算值及节省情况（仅编码时可用） |
 | `--no-strict` | 跳过解码校验（数组数量、缩进、首部分隔符）；重复键时后写入的值生效 |
-| `--keyFolding <mode>` | 键折叠模式：`off`、`safe`（默认：`off`） |
-| `--flattenDepth <number>` | 最多折叠的片段数（默认：`Infinity`）——需要配合 `--keyFolding safe` 使用 |
-| `--expandPaths <mode>` | 路径展开模式：`off`、`safe`（默认：`off`） |
 | `--verbose` | 显示完整的堆栈跟踪和错误原因链（默认：`false`） |
 
 ## 高级示例
@@ -1676,80 +1651,13 @@ cat large-dataset.json | toon --delimiter $'\t' > output.toon
 jq '.results' data.json | toon > filtered.toon
 ```
 
-### 键折叠
-
-折叠嵌套包装层级以减少 token（自规范 v1.5 起支持）：
-
-::: code-group
-
-```bash [基础键折叠]
-toon input.json --keyFolding safe -o output.toon
-```
-
-```bash [限制折叠深度]
-toon input.json --keyFolding safe --flattenDepth 2 -o output.toon
-```
-
-:::
-
-**示例：**
-
-对于如下数据：
-
-```json
-{
-  "data": {
-    "metadata": {
-      "items": ["a", "b"]
-    }
-  }
-}
-```
-
-使用 `--keyFolding safe` 后，输出变为：
-
-```yaml
-data.metadata.items[2]: a,b
-```
-
-而不是：
-
-```yaml
-data:
-  metadata:
-    items[2]: a,b
-```
-
-### 路径展开
-
-在解码时从折叠的键还原嵌套结构：
-
-```bash
-toon data.toon --expandPaths safe -o output.json
-```
-
-这与 `--keyFolding safe` 搭配使用，可实现无损的往返转换。
-
-### 往返转换工作流
-
-```bash
-# 使用折叠进行编码
-toon input.json --keyFolding safe -o compressed.toon
-
-# 使用展开进行解码（恢复原始结构）
-toon compressed.toon --expandPaths safe -o output.json
-
-# 校验往返转换结果
-diff input.json output.json
-```
-
 ### 组合选项
 
 组合使用多个选项以获得最大效率：
 
 ```bash
-# 键折叠 + 制表符分隔 + 统计信息
-toon data.json --keyFolding safe --delimiter $'\t' --stats -o output.toon
+# 制表符分隔 + 统计信息
+toon data.json --delimiter $'\t' --stats -o output.toon
 ```
 
 ---
@@ -1950,9 +1858,7 @@ import { encode } from '@toon-format/toon'
 
 const toon = encode(data, {
   indent: 2,
-  delimiter: ',',
-  keyFolding: 'off',
-  flattenDepth: Infinity
+  delimiter: ','
 })
 ```
 
@@ -2110,7 +2016,7 @@ type EncodeReplacer = (
 import { encode } from '@toon-format/toon'
 
 const data = {
-  user: { name: 'Alice', password: 'secret123', email: 'alice@example.com' }
+  user: { name: 'Ada', password: 'secret123', email: 'ada@example.com' }
 }
 
 function replacer(key, value) {
@@ -2126,8 +2032,8 @@ console.log(encode(data, { replacer }))
 
 ```yaml
 user:
-  name: Alice
-  email: alice@example.com
+  name: Ada
+  email: ada@example.com
 ```
 
 **转换值：**
@@ -2203,8 +2109,7 @@ import { decode } from '@toon-format/toon'
 
 const data = decode(toon, {
   indent: 2,
-  strict: true,
-  expandPaths: 'off'
+  strict: true
 })
 ```
 
@@ -2249,7 +2154,7 @@ console.log(data)
 
 将预先按行拆分好的 TOON 数据解码为一个 JavaScript 值。这是一个对流式处理友好的封装，基于事件驱动的解码器会在内存中构建完整的值。
 
-当你已经拥有数组或可迭代对象形式的行数据（例如来自文件流、readline 接口或网络响应），并希望获得带路径展开支持的标准解码行为时，该函数非常有用。
+当你已经拥有数组或可迭代对象形式的行数据（例如来自文件流、readline 接口或网络响应），并希望获得标准解码行为时，该函数非常有用。
 
 #### 参数
 
@@ -2269,9 +2174,9 @@ console.log(data)
 ```ts
 import { decodeFromLines } from '@toon-format/toon'
 
-const lines = ['name: Alice', 'age: 30']
+const lines = ['name: Ada', 'age: 30']
 const value = decodeFromLines(lines)
-// { name: 'Alice', age: 30 }
+// { name: 'Ada', age: 30 }
 ```
 
 **Node.js readline 流式处理：**
@@ -2290,27 +2195,18 @@ const value = decodeFromLines(rl)
 console.log(value)
 ```
 
-**配合路径展开：**
-
-```ts
-const lines = ['user.name: Alice', 'user.age: 30']
-const value = decodeFromLines(lines, { expandPaths: 'safe' })
-// { user: { name: 'Alice', age: 30 } }
-```
-
 ### 选择合适的解码器
 
-| 函数 | 输入 | 输出 | 异步 | 路径展开 | 适用场景 |
-|----------|-------|--------|-------|----------------|----------|
-| `decode()` | 字符串 | 值 | 否 | 支持 | 你拥有完整的 TOON 字符串 |
-| `decodeFromLines()` | 行 | 值 | 否 | 支持 | 你拥有行数据，并希望得到完整的值 |
-| `decodeStreamSync()` | 行 | 事件 | 否 | 不支持 | 你需要逐事件处理（同步） |
-| `decodeStream()` | 行 | 事件 | 是 | 不支持 | 你需要逐事件处理（异步） |
+| 函数 | 输入 | 输出 | 异步 | 适用场景 |
+|----------|-------|--------|-------|----------|
+| `decode()` | 字符串 | 值 | 否 | 你拥有完整的 TOON 字符串 |
+| `decodeFromLines()` | 行 | 值 | 否 | 你拥有行数据，并希望得到完整的值 |
+| `decodeStreamSync()` | 行 | 事件 | 否 | 你需要逐事件处理（同步） |
+| `decodeStream()` | 行 | 事件 | 是 | 你需要逐事件处理（异步） |
 
 ::: info 关键区别
 
 * **值 vs 事件**：以 `Stream` 结尾的函数会产生事件，而不会在内存中构建完整的值。
-* **路径展开**：只有 `decode()` 和 `decodeFromLines()` 支持 `expandPaths: 'safe'`。
 * **异步支持**：只有 `decodeStream()` 接受异步可迭代对象（适用于文件/网络流）。
   :::
 
@@ -2324,8 +2220,6 @@ const value = decodeFromLines(lines, { expandPaths: 'safe' })
 
 ::: tip 事件流
 这是一个返回单个解析事件的底层 API。对于大多数使用场景，[`decodeFromLines()`](#decodefromlines-lines-options) 或 [`decode()`](#decode-input-options) 会更方便。
-
-流式模式下**不支持**路径展开(`expandPaths: 'safe'`)，因为它需要完整的嵌套值结构。
 :::
 
 #### 参数
@@ -2346,7 +2240,7 @@ const value = decodeFromLines(lines, { expandPaths: 'safe' })
 ```ts
 import { decodeStreamSync } from '@toon-format/toon'
 
-const lines = ['name: Alice', 'age: 30']
+const lines = ['name: Ada', 'age: 30']
 
 for (const event of decodeStreamSync(lines)) {
   console.log(event)
@@ -2355,7 +2249,7 @@ for (const event of decodeStreamSync(lines)) {
 // 输出:
 // { type: 'startObject' }
 // { type: 'key', key: 'name' }
-// { type: 'primitive', value: 'Alice' }
+// { type: 'primitive', value: 'Ada' }
 // { type: 'key', key: 'age' }
 // { type: 'primitive', value: 30 }
 // { type: 'endObject' }
@@ -2366,7 +2260,7 @@ for (const event of decodeStreamSync(lines)) {
 ```ts
 import { decodeStreamSync } from '@toon-format/toon'
 
-const lines = ['users[2]{id,name}:', '  1,Alice', '  2,Bob']
+const lines = ['users[2]{id,name}:', '  1,Ada', '  2,Bob']
 let userCount = 0
 
 for (const event of decodeStreamSync(lines)) {
@@ -2469,8 +2363,6 @@ catch (error) {
 |--------|------|---------|-------------|
 | `indent` | `number` | `2` | 每个缩进层级的空格数 |
 | `delimiter` | `','` | `'\t'` | `'\|'` | `','` | 数组值和表格行使用的分隔符 |
-| `keyFolding` | `'off'` | `'safe'` | `'off'` | 启用键折叠，将单键嵌套包装链折叠为点分路径 |
-| `flattenDepth` | `number` | `Infinity` | 启用 `keyFolding` 时最多折叠的片段数（值为 0-1 时没有实际效果） |
 | `replacer` | `EncodeReplacer` | `undefined` | 编码前用于转换或省略值的可选钩子（参见 [替换函数](#替换函数-replacer)） |
 
 **分隔符选项：**
@@ -2501,24 +2393,21 @@ encode(data, { delimiter: '|' })
 |--------|------|---------|-------------|
 | `indent` | `number` | `2` | 每个缩进层级期望的空格数 |
 | `strict` | `boolean` | `true` | 启用严格校验（数组数量、缩进、分隔符一致性） |
-| `expandPaths` | `'off'` | `'safe'` | `'off'` | 启用路径展开，将带点号的键还原为嵌套对象（与 `keyFolding: 'safe'` 搭配使用） |
 
 默认情况下(`strict: true`)，解码器会严格校验输入：
 
 * **非法转义序列**：遇到 `\x`、未终止的字符串、无法完整表示 Unicode 字符的 `\uXXXX` 时抛出错误
 * **语法错误**：遇到缺少冒号、格式错误的首部时抛出错误
 * **数组长度不匹配**：当声明的长度与实际数量不一致时抛出错误
+* **带键表格不匹配**：当条目行数量与声明数量不一致，或某一行的单元格数量与首部叶子字段数量不一致时抛出错误（§9.5）
 * **首部分隔符不匹配**：当方括号中声明的分隔符与字段列表中使用的分隔符不一致时抛出错误(§14.2)
-* **缩进错误**：当前导空格数不是 `indent` 的整数倍时抛出错误
-* **首部结构**：遇到带前导零或非整数的数组长度，以及方括号/字段/冒号之间存在插入内容时抛出错误
-* **重复的同级键**：当同一对象下存在两个具有相同键的子项时抛出错误(§14.4)
-* **路径展开冲突**：当设置了 `expandPaths: 'safe'` 时，遇到会发生冲突的重叠点号路径时抛出错误
+* **缩进错误**：当前导空格数不是 `indent` 的整数倍、进入嵌套作用域时深度跳过一级以上、或出现不属于任何作用域的过度缩进行时抛出错误（§14.2）。严格解码绝不会静默丢弃输入，包括根数组或根级带键表格完成后的尾随内容（§5）
+* **首部结构**：遇到带前导零或非整数的数组长度、格式错误的带键标记，以及方括号/字段/冒号之间存在插入内容时抛出错误
+* **重复的同级键**：当同一对象下存在两个具有相同键的子项时抛出错误，包括重复的条目键（§14.3）
 
 所有解码错误都以 [`ToonDecodeError`](#错误处理) 实例的形式抛出，并带有结构化的 `line` 和 `source` 字段。
 
-将 `strict` 设为 `false` 可跳过这些检查。此时重复的同级键和路径展开冲突会按照文档顺序、以最后写入的值为准来解决。
-
-关于路径展开行为和冲突解决的更多细节，请参阅 [键折叠与路径展开](#键折叠与路径展开)。
+将 `strict` 设为 `false` 可跳过这些检查。此时重复的同级键会按照文档顺序、以最后写入的值为准来解决。
 
 ### `DecodeStreamOptions`
 
@@ -2528,10 +2417,6 @@ encode(data, { delimiter: '|' })
 |--------|------|---------|-------------|
 | `indent` | `number` | `2` | 每个缩进层级期望的空格数 |
 | `strict` | `boolean` | `true` | 启用严格校验（数组数量、缩进、分隔符一致性） |
-
-::: warning 不支持路径展开
-路径展开需要构建完整的嵌套值结构，这与事件流处理不兼容。如果你需要路径展开，请使用 [`decodeFromLines()`](#decodefromlines-lines-options)。
-:::
 
 ## TypeScript 类型
 
@@ -2545,7 +2430,7 @@ type JsonStreamEvent
     | { type: 'endObject' }
     | { type: 'startArray', length: number }
     | { type: 'endArray' }
-    | { type: 'key', key: string, wasQuoted?: boolean }
+    | { type: 'key', key: string }
     | { type: 'primitive', value: JsonPrimitive }
 ```
 
@@ -2587,7 +2472,7 @@ import { decode, encode } from '@toon-format/toon'
 
 const original = {
   users: [
-    { id: 1, name: 'Alice', role: 'admin' },
+    { id: 1, name: 'Ada', role: 'admin' },
     { id: 2, name: 'Bob', role: 'user' }
   ]
 }
@@ -2598,68 +2483,6 @@ const restored = decode(toon)
 console.log(JSON.stringify(original) === JSON.stringify(restored))
 // true
 ```
-
-**启用键折叠：**
-
-```ts
-import { decode, encode } from '@toon-format/toon'
-
-const original = { data: { metadata: { items: ['a', 'b'] } } }
-
-// 使用折叠进行编码
-const toon = encode(original, { keyFolding: 'safe' })
-// → "data.metadata.items[2]: a,b"
-
-// 使用展开进行解码
-const restored = decode(toon, { expandPaths: 'safe' })
-// → { data: { metadata: { items: ['a', 'b'] } } }
-
-console.log(JSON.stringify(original) === JSON.stringify(restored))
-// true
-```
-
-### 键折叠与路径展开
-
-**键折叠**(`keyFolding: 'safe'`)会在编码期间折叠单键嵌套包装链：
-
-```ts
-import { encode } from '@toon-format/toon'
-
-const data = { data: { metadata: { items: ['a', 'b'] } } }
-
-// 未使用折叠
-encode(data)
-// data:
-//   metadata:
-//     items[2]: a,b
-
-// 使用折叠
-encode(data, { keyFolding: 'safe' })
-// data.metadata.items[2]: a,b
-```
-
-**路径展开**(`expandPaths: 'safe'`)会在解码时反向执行该过程：
-
-```ts
-import { decode } from '@toon-format/toon'
-
-const toon = 'data.metadata.items[2]: a,b'
-
-const data = decode(toon, { expandPaths: 'safe' })
-console.log(data)
-// { data: { metadata: { items: ['a', 'b'] } } }
-```
-
-**展开时发生冲突的解决方式：**
-
-当多个展开后的键构造出重叠的路径时，解码器会递归地合并它们：
-
-* **对象 + 对象**：递归深度合并
-* **对象 + 非对象**（数组或基本类型）：产生冲突
-  * 使用 `strict: true`（默认）时：抛出错误
-  * 使用 `strict: false` 时：以最后写入的值为准
-
-重复的同级键（与 `expandPaths` 无关）遵循相同的策略：严格模式下抛出错误，宽松模式下保留最后写入的值。
 
 ### 分隔符策略
 
@@ -2673,10 +2496,10 @@ items[2	]{sku	name	qty	price}:
   B2	Gadget	1	14.5
 ```
 
-对于大型表格数据，若要最大限度减少 token 用量，可以同时使用制表符分隔符和键折叠：
+对于大型表格数据，若要最大限度减少 token 用量，可以使用制表符分隔符：
 
 ```ts
-encode(data, { delimiter: '\t', keyFolding: 'safe' })
+encode(data, { delimiter: '\t' })
 ```
 
 **如何选择分隔符：**
@@ -2689,7 +2512,7 @@ encode(data, { delimiter: '\t', keyFolding: 'safe' })
 
 ---
 url: /zh/reference/syntax-cheatsheet.md
-description: 快速了解 JSON 到 TOON 的映射关系，包括对象、数组、引号、键折叠和类型转换。
+description: 快速了解 JSON 到 TOON 的映射关系，包括对象、数组、表格形式、引号和类型转换。
 ---
 
 # 语法速查表
@@ -2952,10 +2775,11 @@ name: ""
 * 空字符串（`""`）
 * 开头或结尾是空格字符
 * 值等于 `true`、`false` 或 `null`（区分大小写）
-* 看起来像数字（例如 `"42"`、`"-3.14"`、`"1e-6"`、`"05"`）
+* 看起来像数字（例如 `"42"`、`"-3.14"`、`"1e-6"`、`"05"`、`"+1"`）
 * 包含特殊字符：`:`、`"`、`\`、`[`、`]`、`{`、`}`，或任何控制字符（U+0000–U+001F，包括换行符/制表符/回车符）
 * 包含相关的分隔符（数组作用范围内为生效分隔符，其他情况下为文档级分隔符）
 * 值等于 `"-"`，或以 `"-"` 开头且后面还有其他字符
+* 值等于 `"#"`，或以 `"#"` 开头（该行会被视为注释）
 
 除上述情况，字符串都可以不加引号。Unicode、emoji 以及内部（非开头/结尾）带空格的字符串都可以安全地不加引号：
 
@@ -3000,19 +2824,30 @@ key[N]{field1,field2,field3}:
 * `{fields}` = 列名
 * 默认分隔符：逗号
 
+### 嵌套字段组
+
+```
+key[N]{id,customer{name,country},total}:
+```
+
+* `customer{…}` = 一列结构一致的子对象，折叠进首部
+* 行数据保持扁平：单元格按字段列表的深度优先顺序排列
+
+详情请参阅 [格式概览——嵌套字段组](/zh/guide/format-overview#嵌套字段组)。
+
 ### 备选分隔符
 
 ::: code-group
 
 ```yaml [制表符分隔]
 items[2	]{id	name}:
-  1	Alice
+  1	Ada
   2	Bob
 ```
 
 ```yaml [竖线分隔]
 items[2|]{id|name}:
-  1|Alice
+  1|Ada
   2|Bob
 ```
 
@@ -3020,23 +2855,26 @@ items[2|]{id|name}:
 
 分隔符符号会出现在方括号和花括号内。
 
-## 键折叠（可选）
+## 带键的表格化对象
 
-标准嵌套：
-
-```yaml
-data:
-  metadata:
-    items[2]: a,b
-```
-
-启用键折叠后(`keyFolding: 'safe'`)：
+结构一致对象组成的对象会折叠为带键首部，每个条目对应一行：
 
 ```yaml
-data.metadata.items[2]: a,b
+users[2:]{age,city}:
+  alice: 30,Berlin
+  bob: 25,Paris
 ```
 
-详情请参阅 [格式概览——键折叠](/zh/guide/format-overview#键折叠-可选)。
+详情请参阅 [格式概览——带键的表格化对象](/zh/guide/format-overview#带键的表格化对象)。
+
+## 注释
+
+第一个非空格字符为 `#` 的行会在解码前被剥离：
+
+```yaml
+# 仅支持整行注释；编码器永远不会输出注释
+host: example.com
+```
 
 ## 类型转换
 
@@ -3074,7 +2912,7 @@ description: TOON 规范导览：章节结构、合规性检查清单、媒体�
 
 ## 当前版本
 
-**规范 v{{ $spec.version }}**（2026-05-20）是当前已发布的工作草案。该版本已足够稳定并可作为实现依据，但尚未定稿；详情请参阅规范中的 “Status of This Document” 部分。
+**规范 v{{ $spec.version }}**（2026-07-22）是当前已发布的工作草案。该版本已足够稳定并可作为实现依据，但尚未定稿；详情请参阅规范中的 “Status of This Document” 部分。
 
 ## 媒体类型与文件扩展名
 
@@ -3104,10 +2942,10 @@ TOON 文档始终使用 UTF-8 编码和 LF（`\n`）换行符；可选的 `chars
 ### 语法规则
 
 [§5 具体语法与根形式](https://github.com/toon-format/spec/blob/main/SPEC.md#5-concrete-syntax-and-root-form)：
-定义了 TOON 这种面向行、基于缩进的表示法，并说明如何判断根值是对象、数组还是基本类型。
+定义了 TOON 这种面向行、基于缩进的表示法，并说明如何判断根值是对象、数组还是基本类型。§5.1 定义了整行注释，注释会在其他任何处理之前通过词法预处理移除。
 
 [§6 首部语法](https://github.com/toon-format/spec/blob/main/SPEC.md#6-header-syntax-normative)：
-给出数组首部的规范性 ABNF 语法：`key[N<delim?>]{fields}:`。该节规定了方括号片段、分隔符符号和字段列表。
+给出数组首部和带键首部的规范性 ABNF 语法：`key[N<delim?>]{fields}:` 和 `key[N:<delim?>]{fields}:`。该节规定了方括号片段、分隔符符号和字段列表，包括嵌套字段组。
 
 [§7 字符串与键](https://github.com/toon-format/spec/blob/main/SPEC.md#7-strings-and-keys)：
 完整的引号规则（字符串何时必须加引号）、合法转义序列（仅包括 `\\`、`\"`、`\n`、`\r`、`\t`，以及用于其他 U+0000–U+001F 控制字符的 `\uXXXX`），以及键的编码要求。
@@ -3115,11 +2953,11 @@ TOON 文档始终使用 UTF-8 编码和 LF（`\n`）换行符；可选的 `chars
 [§8 对象](https://github.com/toon-format/spec/blob/main/SPEC.md#8-objects)：
 对象字段编码（`key: value`）、嵌套规则、键顺序保留，以及空对象处理。
 
-[§9 数组](https://github.com/toon-format/spec/blob/main/SPEC.md#9-arrays)：
-涵盖所有数组形式：基本类型数组（内联）、对象数组（表格化）、混合数组/非一致数组（列表），以及数组的数组。该节还包括表格化检测要求。
+[§9 数组与表格形式](https://github.com/toon-format/spec/blob/main/SPEC.md#9-arrays-and-tabular-forms)：
+涵盖所有数组形式：基本类型数组（内联）、对象数组（表格化，包括嵌套字段组）、混合数组/非一致数组（列表）、数组的数组，以及一致对象映射的带键表格形式（§9.5）。该节还包括各类形式的检测要求。
 
 [§10 作为列表项的对象](https://github.com/toon-format/spec/blob/main/SPEC.md#10-objects-as-list-items)：
-列表项中对象的缩进规则（第一个字段位于连字符所在行），包括第一个字段为表格化数组时的规范模式（首部位于连字符所在行，行数据缩进深度为 +2，同级字段缩进深度为 +1）。
+列表项中对象的缩进规则（第一个字段位于连字符所在行），包括第一个字段为表格化数组或带键表格对象时的规范模式（首部位于连字符所在行，行数据缩进深度为 +2，同级字段缩进深度为 +1）。
 
 [§11 分隔符](https://github.com/toon-format/spec/blob/main/SPEC.md#11-delimiters)：
 分隔符作用域（文档级分隔符与生效分隔符）、基于分隔符的引号处理，以及逗号、制表符、竖线分隔符的解析规则。
@@ -3132,11 +2970,8 @@ TOON 文档始终使用 UTF-8 编码和 LF（`\n`）换行符；可选的 `chars
 [§13 合规性与选项](https://github.com/toon-format/spec/blob/main/SPEC.md#13-conformance-and-options)：
 定义了合规类型（编码器、解码器、校验器）、标准化选项以及合规检查清单。
 
-[§13.4 键折叠与路径展开](https://github.com/toon-format/spec/blob/main/SPEC.md#134-key-folding-and-path-expansion)：
-可选的编码器特性（键折叠）和解码器特性（路径展开），用于折叠/展开带点号的路径；该节还包含深度合并语义，以及严格/非严格模式下的冲突解决方式。
-
 [§14 严格模式下的错误与诊断](https://github.com/toon-format/spec/blob/main/SPEC.md#14-strict-mode-errors-and-diagnostics-authoritative-checklist)：
-严格模式下各类错误的**权威检查清单**：数组数量与宽度不匹配（§14.1）、语法和结构错误（§14.2）、路径展开冲突（§14.3），以及重复的同级键（§14.4）。
+严格模式下各类错误的**权威检查清单**：数组与条目数量、宽度不匹配（§14.1）、语法和结构错误（§14.2），以及重复的同级键（§14.3）。
 
 ### 实现指导
 
@@ -3170,7 +3005,7 @@ Unicode 处理，以及不受语言环境影响的数字文本格式。
 | §7 | 字符串、键、引号、转义 | 实现字符串处理时 |
 | §8–10 | 对象、数组、列表项 | 实现结构编码时 |
 | §11–12 | 分隔符、缩进、空白 | 实现格式化与校验时 |
-| §13 | 合规性、选项、键折叠/路径展开 | 实现选项与特性时 |
+| §13 | 合规性与选项 | 实现选项与特性时 |
 | §14 | 严格模式错误 | 实现校验器时 |
 | §15–16 | 安全、国际化 | 运行和部署时的注意事项 |
 | §17–19 | IANA、版本管理、知识产权 | 生态与许可 |
@@ -3186,35 +3021,26 @@ Unicode 处理，以及不受语言环境影响的数字文本格式。
 * 生成 UTF-8 编码、LF 换行符的输出
 * 使用一致的缩进（默认 2 个空格，不使用制表符）
 * 在带引号的字符串中转义 `\\`、`\"`、`\n`、`\r`、`\t`，对其他任意 U+0000–U+001F 控制字符使用 `\uXXXX`；拒绝未配对的 UTF-16 代理码位
-* 对包含生效分隔符、冒号或结构性字符的字符串加引号
-* 输出与实际数量一致的数组长度 `[N]`
+* 对包含生效分隔符、冒号或结构性字符，以及以 `-` 或 `#` 开头的字符串加引号
+* 输出与实际项目数或条目数一致的数组长度 `[N]`
 * 保留对象键的顺序
 * 按 §2 输出数字（对于 `[1e-6, 1e21)` 范围内或为零的值使用规范十进制；超出该范围允许使用指数记法）
 * 将 `-0` 转换为 `0`，将 `NaN`/±Infinity 转换为 `null`
 * 以小写字面量形式输出布尔值和 null（`true`、`false`、`null`）
 * 不得包含行尾空格或末尾换行符
-* 启用 `keyFolding="safe"` 时，折叠必须遵循 §13.4：
-  * 只折叠合法标识符片段的键（字母/数字/下划线，不含点号），
-  * 不得与现有的同级键产生冲突，
-  * 不得折叠需要加引号的片段。
-* 设置了 `flattenDepth` 时，折叠必须在配置的片段数处停止（§13.4）。
+* 永远不要输出注释行
 
 ### 解码器检查清单（§13.2） [↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#132-decoder-conformance-checklist)
 
 关键要求：
 
-* 按 §6 解析数组首部（长度、分隔符、字段）
-* 仅使用生效分隔符拆分内联数组和表格化行
+* 在词法预处理阶段剥离整行注释（§5.1）
+* 按 §6 解析数组首部和带键首部（长度、带键标记、分隔符、字段，包括嵌套字段组）
+* 仅使用生效分隔符拆分内联数组、表格行和带键条目行
 * 只使用合法转义对带引号的字符串进行反转义
 * 为不带引号的值判定类型：true/false/null → 布尔值/null，数字 → 数字，其他 → 字符串
 * 在 `strict=true` 时强制执行严格模式规则
 * 保留数组顺序和对象键顺序
-* 启用 `expandPaths="safe"` 时，按 §13.4 将带点号的键展开为嵌套对象：
-  * 按 `.` 拆分，仅当所有片段均为合法标识符片段时才进行展开，
-  * 对重叠的路径进行深度合并（对象 + 对象），
-  * 不对数组执行按元素的合并。
-* 当 `expandPaths="safe"` 且 `strict=true`（默认）时，遇到任何展开冲突都必须报错（§14.3）。
-* 当 `expandPaths="safe"` 且 `strict=false` 时，必须采用确定性的“最后写入者优先”（LWW）冲突解决方式（§13.4）。
 
 ### 校验器检查清单（§13.3） [↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#133-validator-conformance-checklist)
 
@@ -3223,8 +3049,8 @@ Unicode 处理，以及不受语言环境影响的数字文本格式。
 * 结构性合规（首部、缩进、列表标记）
 * 空白不变式（无行尾空格/换行符）
 * 首部与行数据之间的分隔符一致性
-* 实际数组长度与声明的 `[N]` 相符
-* 所有严格模式要求（包括启用时的路径展开冲突）
+* 实际行数、项目数和条目数与声明的 `[N]` 相符
+* 所有严格模式要求
 
 ## 版本管理
 
@@ -3801,9 +3627,7 @@ import { encode } from '@toon-format/toon'
 
 const toon = encode(data, {
   indent: 2,
-  delimiter: ',',
-  keyFolding: 'off',
-  flattenDepth: Infinity
+  delimiter: ','
 })
 ```
 
@@ -3961,7 +3785,7 @@ type EncodeReplacer = (
 import { encode } from '@toon-format/toon'
 
 const data = {
-  user: { name: 'Alice', password: 'secret123', email: 'alice@example.com' }
+  user: { name: 'Ada', password: 'secret123', email: 'ada@example.com' }
 }
 
 function replacer(key, value) {
@@ -3977,8 +3801,8 @@ console.log(encode(data, { replacer }))
 
 ```yaml
 user:
-  name: Alice
-  email: alice@example.com
+  name: Ada
+  email: ada@example.com
 ```
 
 **Transforming values:**
@@ -4054,8 +3878,7 @@ import { decode } from '@toon-format/toon'
 
 const data = decode(toon, {
   indent: 2,
-  strict: true,
-  expandPaths: 'off'
+  strict: true
 })
 ```
 
@@ -4100,7 +3923,7 @@ console.log(data)
 
 Decodes TOON format from pre-split lines into a JavaScript value. This is a streaming-friendly wrapper around the event-based decoder that builds the full value in memory.
 
-Useful when you already have lines as an array or iterable (e.g., from file streams, readline interfaces, or network responses) and want the standard decode behavior with path expansion support.
+Useful when you already have lines as an array or iterable (e.g., from file streams, readline interfaces, or network responses) and want the standard decode behavior.
 
 #### Parameters
 
@@ -4120,9 +3943,9 @@ Returns a `JsonValue` (the parsed JavaScript value: object, array, or primitive)
 ```ts
 import { decodeFromLines } from '@toon-format/toon'
 
-const lines = ['name: Alice', 'age: 30']
+const lines = ['name: Ada', 'age: 30']
 const value = decodeFromLines(lines)
-// { name: 'Alice', age: 30 }
+// { name: 'Ada', age: 30 }
 ```
 
 **Streaming from Node.js readline:**
@@ -4141,27 +3964,18 @@ const value = decodeFromLines(rl)
 console.log(value)
 ```
 
-**With path expansion:**
-
-```ts
-const lines = ['user.name: Alice', 'user.age: 30']
-const value = decodeFromLines(lines, { expandPaths: 'safe' })
-// { user: { name: 'Alice', age: 30 } }
-```
-
 ### Choosing the Right Decoder
 
-| Function | Input | Output | Async | Path Expansion | Use When |
-|----------|-------|--------|-------|----------------|----------|
-| `decode()` | String | Value | No | Yes | You have a complete TOON string |
-| `decodeFromLines()` | Lines | Value | No | Yes | You have lines and want the full value |
-| `decodeStreamSync()` | Lines | Events | No | No | You need event-by-event processing (sync) |
-| `decodeStream()` | Lines | Events | Yes | No | You need event-by-event processing (async) |
+| Function | Input | Output | Async | Use When |
+|----------|-------|--------|-------|----------|
+| `decode()` | String | Value | No | You have a complete TOON string |
+| `decodeFromLines()` | Lines | Value | No | You have lines and want the full value |
+| `decodeStreamSync()` | Lines | Events | No | You need event-by-event processing (sync) |
+| `decodeStream()` | Lines | Events | Yes | You need event-by-event processing (async) |
 
 ::: info Key Differences
 
 * **Value vs. Events**: Functions ending in `Stream` yield events without building the full value in memory.
-* **Path expansion**: Only `decode()` and `decodeFromLines()` support `expandPaths: 'safe'`.
 * **Async support**: Only `decodeStream()` accepts async iterables (useful for file/network streams).
   :::
 
@@ -4175,8 +3989,6 @@ Useful for streaming processing, custom transformations, or memory-efficient par
 
 ::: tip Event Streaming
 This is a low-level API that returns individual parse events. For most use cases, [`decodeFromLines()`](#decodefromlines-lines-options) or [`decode()`](#decode-input-options) are more convenient.
-
-Path expansion (`expandPaths: 'safe'`) is **not supported** in streaming mode since it requires the full value tree.
 :::
 
 #### Parameters
@@ -4197,7 +4009,7 @@ Returns an `Iterable<JsonStreamEvent>` that yields structured events (see [TypeS
 ```ts
 import { decodeStreamSync } from '@toon-format/toon'
 
-const lines = ['name: Alice', 'age: 30']
+const lines = ['name: Ada', 'age: 30']
 
 for (const event of decodeStreamSync(lines)) {
   console.log(event)
@@ -4206,7 +4018,7 @@ for (const event of decodeStreamSync(lines)) {
 // Output:
 // { type: 'startObject' }
 // { type: 'key', key: 'name' }
-// { type: 'primitive', value: 'Alice' }
+// { type: 'primitive', value: 'Ada' }
 // { type: 'key', key: 'age' }
 // { type: 'primitive', value: 30 }
 // { type: 'endObject' }
@@ -4217,7 +4029,7 @@ for (const event of decodeStreamSync(lines)) {
 ```ts
 import { decodeStreamSync } from '@toon-format/toon'
 
-const lines = ['users[2]{id,name}:', '  1,Alice', '  2,Bob']
+const lines = ['users[2]{id,name}:', '  1,Ada', '  2,Bob']
 let userCount = 0
 
 for (const event of decodeStreamSync(lines)) {
@@ -4320,8 +4132,6 @@ Configuration for [`encode()`](#encode-input-options) and [`encodeLines()`](#enc
 |--------|------|---------|-------------|
 | `indent` | `number` | `2` | Number of spaces per indentation level |
 | `delimiter` | `','` | `'\t'` | `'\|'` | `','` | Delimiter for array values and tabular rows |
-| `keyFolding` | `'off'` | `'safe'` | `'off'` | Enable key folding to collapse single-key wrapper chains into dotted paths |
-| `flattenDepth` | `number` | `Infinity` | Maximum number of segments to fold when `keyFolding` is enabled (values 0-1 have no practical effect) |
 | `replacer` | `EncodeReplacer` | `undefined` | Optional hook to transform or omit values before encoding (see [Replacer Function](#replacer-function)) |
 
 **Delimiter options:**
@@ -4352,24 +4162,21 @@ Configuration for [`decode()`](#decode-input-options) and [`decodeFromLines()`](
 |--------|------|---------|-------------|
 | `indent` | `number` | `2` | Expected number of spaces per indentation level |
 | `strict` | `boolean` | `true` | Enable strict validation (array counts, indentation, delimiter consistency) |
-| `expandPaths` | `'off'` | `'safe'` | `'off'` | Enable path expansion to reconstruct dotted keys into nested objects (pairs with `keyFolding: 'safe'`) |
 
 By default (`strict: true`), the decoder validates input strictly:
 
 * **Invalid escape sequences**: Throws on `\x`, unterminated strings, lone-surrogate `\uXXXX`
 * **Syntax errors**: Throws on missing colons, malformed headers
 * **Array length mismatches**: Throws when declared length doesn't match actual count
+* **Keyed tabular mismatches**: Throws when the entry-row count doesn't match the declared count or a row's cell count doesn't match the header's leaf fields (§9.5)
 * **Header delimiter mismatch**: Throws when the bracket-declared delimiter differs from the field-list delimiter (§14.2)
-* **Indentation errors**: Throws when leading spaces aren't exact multiples of `indent`
-* **Header structure**: Throws on leading-zero or non-integer array lengths and on intervening content between bracket/fields/colon
-* **Duplicate sibling keys**: Throws when an object has two children with the same key (§14.4)
-* **Path-expansion conflicts**: When `expandPaths: 'safe'` is set, throws on overlapping dotted paths that would collide
+* **Indentation errors**: Throws when leading spaces aren't exact multiples of `indent`, on depth jumps of more than one level into a nested scope, and on over-indented lines that belong to no scope (§14.2) – strict decoding never silently discards input, including trailing content after a completed root array or keyed tabular root (§5)
+* **Header structure**: Throws on leading-zero or non-integer array lengths, malformed keyed markers, and intervening content between bracket/fields/colon
+* **Duplicate sibling keys**: Throws when an object has two children with the same key, including duplicate entry keys (§14.3)
 
 All decode errors are thrown as [`ToonDecodeError`](#error-handling) instances with structured `line` and `source` fields.
 
-Set `strict: false` to skip these checks. Duplicate sibling keys and path-expansion conflicts then resolve with last-write-wins in document order.
-
-See [Key Folding & Path Expansion](#key-folding-path-expansion) for more details on path expansion behavior and conflict resolution.
+Set `strict: false` to skip these checks. Duplicate sibling keys then resolve with last-write-wins in document order.
 
 ### `DecodeStreamOptions`
 
@@ -4379,10 +4186,6 @@ Configuration for [`decodeStreamSync()`](#decodestreamsync-lines-options) and [`
 |--------|------|---------|-------------|
 | `indent` | `number` | `2` | Expected number of spaces per indentation level |
 | `strict` | `boolean` | `true` | Enable strict validation (array counts, indentation, delimiter consistency) |
-
-::: warning Path Expansion Not Supported
-Path expansion requires building the full value tree, which is incompatible with event streaming. Use [`decodeFromLines()`](#decodefromlines-lines-options) if you need path expansion.
-:::
 
 ## TypeScript Types
 
@@ -4396,7 +4199,7 @@ type JsonStreamEvent
     | { type: 'endObject' }
     | { type: 'startArray', length: number }
     | { type: 'endArray' }
-    | { type: 'key', key: string, wasQuoted?: boolean }
+    | { type: 'key', key: string }
     | { type: 'primitive', value: JsonPrimitive }
 ```
 
@@ -4438,7 +4241,7 @@ import { decode, encode } from '@toon-format/toon'
 
 const original = {
   users: [
-    { id: 1, name: 'Alice', role: 'admin' },
+    { id: 1, name: 'Ada', role: 'admin' },
     { id: 2, name: 'Bob', role: 'user' }
   ]
 }
@@ -4449,68 +4252,6 @@ const restored = decode(toon)
 console.log(JSON.stringify(original) === JSON.stringify(restored))
 // true
 ```
-
-**With Key Folding:**
-
-```ts
-import { decode, encode } from '@toon-format/toon'
-
-const original = { data: { metadata: { items: ['a', 'b'] } } }
-
-// Encode with folding
-const toon = encode(original, { keyFolding: 'safe' })
-// → "data.metadata.items[2]: a,b"
-
-// Decode with expansion
-const restored = decode(toon, { expandPaths: 'safe' })
-// → { data: { metadata: { items: ['a', 'b'] } } }
-
-console.log(JSON.stringify(original) === JSON.stringify(restored))
-// true
-```
-
-### Key Folding & Path Expansion
-
-**Key Folding** (`keyFolding: 'safe'`) collapses single-key wrapper chains during encoding:
-
-```ts
-import { encode } from '@toon-format/toon'
-
-const data = { data: { metadata: { items: ['a', 'b'] } } }
-
-// Without folding
-encode(data)
-// data:
-//   metadata:
-//     items[2]: a,b
-
-// With folding
-encode(data, { keyFolding: 'safe' })
-// data.metadata.items[2]: a,b
-```
-
-**Path Expansion** (`expandPaths: 'safe'`) reverses this during decoding:
-
-```ts
-import { decode } from '@toon-format/toon'
-
-const toon = 'data.metadata.items[2]: a,b'
-
-const data = decode(toon, { expandPaths: 'safe' })
-console.log(data)
-// { data: { metadata: { items: ['a', 'b'] } } }
-```
-
-**Expansion Conflict Resolution:**
-
-When multiple expanded keys construct overlapping paths, the decoder merges them recursively:
-
-* **Object + Object**: Deep merge recursively
-* **Object + Non-object** (array or primitive): Conflict
-  * With `strict: true` (default): Error
-  * With `strict: false`: Last-write-wins (LWW)
-
-Duplicate sibling keys (independent of `expandPaths`) follow the same policy: strict mode throws, lenient mode keeps the last value seen.
 
 ### Delimiter Strategies
 
@@ -4524,10 +4265,10 @@ items[2	]{sku	name	qty	price}:
   B2	Gadget	1	14.5
 ```
 
-For maximum token savings on large tabular data, combine tab delimiters with key folding:
+For maximum token savings on large tabular data, use tab delimiters:
 
 ```ts
-encode(data, { delimiter: '\t', keyFolding: 'safe' })
+encode(data, { delimiter: '\t' })
 ```
 
 **Choosing a Delimiter:**
@@ -5238,7 +4979,6 @@ Both encoding and decoding operations use streaming output, writing incrementall
 * Uses the same event-based streaming decoder as the `decodeStream` API in `@toon-format/toon`.
 * Streams JSON tokens to output.
 * No full JSON string in memory.
-* When `--expandPaths safe` is enabled, falls back to non-streaming decode internally to apply deep-merge expansion before writing JSON.
 
 Process large files with minimal memory usage:
 
@@ -5271,9 +5011,6 @@ When using the `--stats` flag with encode, the CLI builds the full TOON string o
 | `--indent <number>` | Indentation size (default: `2`) |
 | `--stats` | Show token count estimates and savings (encode only) |
 | `--no-strict` | Skip decode validation (array counts, indentation, header delimiter); last-write-wins on duplicate keys |
-| `--keyFolding <mode>` | Key folding mode: `off`, `safe` (default: `off`) |
-| `--flattenDepth <number>` | Maximum segments to fold (default: `Infinity`) – requires `--keyFolding safe` |
-| `--expandPaths <mode>` | Path expansion mode: `off`, `safe` (default: `off`) |
 | `--verbose` | Show full stack traces and cause chains for errors (default: `false`) |
 
 ## Advanced Examples
@@ -5392,80 +5129,13 @@ cat large-dataset.json | toon --delimiter $'\t' > output.toon
 jq '.results' data.json | toon > filtered.toon
 ```
 
-### Key Folding
-
-Collapse nested wrapper chains to reduce tokens (since spec v1.5):
-
-::: code-group
-
-```bash [Basic key folding]
-toon input.json --keyFolding safe -o output.toon
-```
-
-```bash [Limit folding depth]
-toon input.json --keyFolding safe --flattenDepth 2 -o output.toon
-```
-
-:::
-
-**Example:**
-
-For data like:
-
-```json
-{
-  "data": {
-    "metadata": {
-      "items": ["a", "b"]
-    }
-  }
-}
-```
-
-With `--keyFolding safe`, output becomes:
-
-```yaml
-data.metadata.items[2]: a,b
-```
-
-Instead of:
-
-```yaml
-data:
-  metadata:
-    items[2]: a,b
-```
-
-### Path Expansion
-
-Reconstruct nested structure from folded keys when decoding:
-
-```bash
-toon data.toon --expandPaths safe -o output.json
-```
-
-This pairs with `--keyFolding safe` for lossless round-trips.
-
-### Round-Trip Workflow
-
-```bash
-# Encode with folding
-toon input.json --keyFolding safe -o compressed.toon
-
-# Decode with expansion (restores original structure)
-toon compressed.toon --expandPaths safe -o output.json
-
-# Verify round-trip
-diff input.json output.json
-```
-
 ### Combined Options
 
 Combine multiple options for maximum efficiency:
 
 ```bash
-# Key folding + tab delimiter + stats
-toon data.json --keyFolding safe --delimiter $'\t' --stats -o output.toon
+# Tab delimiter + stats
+toon data.json --delimiter $'\t' --stats -o output.toon
 ```
 
 ---
@@ -5473,8 +5143,8 @@ toon data.json --keyFolding safe --delimiter $'\t' --stats -o output.toon
 ---
 url: /en/guide/format-overview.md
 description: >-
-  TOON syntax with concrete examples – objects, arrays, headers, key folding,
-  and quoting rules.
+  TOON syntax with concrete examples – objects, arrays, tabular headers,
+  comments, and quoting rules.
 ---
 
 # Format Overview
@@ -5529,6 +5199,28 @@ When a key ends with `:` and has no value on the same line, it opens a nested ob
 
 An empty object at the root yields an empty document (no lines). A nested empty object is `key:` alone, with no children.
 
+### Keyed Tabular Objects
+
+When an object has at least two entries whose values are uniform objects (same keys, primitive or nested-uniform values), it collapses into a keyed tabular form: the shared field structure appears once in the header, and each entry becomes one row that carries its own key:
+
+```yaml
+users[2:]{age,city}:
+  alice: 30,Berlin
+  bob: 25,Paris
+```
+
+The colon immediately after the length (`[2:]`) marks the keyed header, and `[N]` declares the entry count. Each entry row is `entrykey: cell,cell,…` – the entry key followed by the entry value's leaf values in field order.
+
+When the root object itself is eligible, the key is omitted:
+
+```text
+[2:]{age,city}:
+  alice: 30,Berlin
+  bob: 25,Paris
+```
+
+Objects that don't qualify keep the nested form unchanged: single-entry objects, objects whose values mix shapes or include primitives, arrays, or empty objects. In practice this leaves most configuration-style maps as they are ([spec §9.5](https://github.com/toon-format/spec/blob/main/SPEC.md#95-keyed-objects--tabular-form)).
+
 ## Arrays
 
 TOON detects array structure and chooses the most efficient representation. Arrays always declare their length in brackets: `[N]`.
@@ -5555,10 +5247,10 @@ items[2]{sku,qty,price}:
   B2,1,14.5
 ```
 
-```yaml [With Spaces in Values]
+```yaml [Spaces and Quoting]
 users[2]{id,name,role}:
-  1,Alice Admin,admin
-  2,"Bob Smith",user
+  1,Ada Lovelace,admin
+  2,"Smith, Bob",user
 ```
 
 :::
@@ -5572,7 +5264,19 @@ The header `items[2]{sku,qty,price}:` declares:
 Each row contains values in the same order as the field list. Values are encoded as primitives (strings, numbers, booleans, null) and separated by the delimiter.
 
 > \[!NOTE]
-> Tabular format requires identical field sets across all objects (same keys, order per object may vary), primitive values only (no nested arrays/objects), and at least one key per object – arrays that contain an empty `{}` element fall back to the expanded list form below.
+> Tabular format requires identical field sets across all objects (same keys, order per object may vary), at least one key per object, and every column either primitive-valued or a uniform nested object (see below) – arrays that contain an empty `{}` element or mix value shapes within a column fall back to the expanded list form.
+
+### Nested Field Groups
+
+A column whose values are uniform sub-objects (same keys in every element, recursively primitive or nested-uniform) folds into the header as a nested field group, while rows stay flat:
+
+```yaml
+orders[2]{id,customer{name,country},total}:
+  1,Ada,DE,9.99
+  2,Bob,FR,14.5
+```
+
+The header `customer{name,country}` declares a nested-object column; each row's cells follow a depth-first walk of the field list, so `Ada,DE` fills `customer.name` and `customer.country` of the first order. Nesting depth is unbounded ([spec §9.3](https://github.com/toon-format/spec/blob/main/SPEC.md#93-arrays-of-objects--tabular-form)).
 
 ### Mixed and Non-Uniform Arrays
 
@@ -5708,73 +5412,17 @@ Tab and pipe delimiters are explicitly encoded in the header brackets and field 
 > \[!TIP]
 > Tab delimiters often tokenize more efficiently than commas, especially for data with few quoted strings. Use `encode(data, { delimiter: '\t' })` for additional token savings.
 
-## Key Folding (Optional)
+## Comments
 
-Key folding is an optional encoder feature (since spec v1.5) that collapses chains of single-key objects into dotted paths, reducing tokens for deeply nested data.
-
-### Basic Folding
-
-Standard nesting:
+Decoders strip every line whose first non-space character is `#` in a lexical pre-pass, before anything else:
 
 ```yaml
-data:
-  metadata:
-    items[2]: a,b
+# Server configuration
+host: example.com
+port: 8080
 ```
 
-With key folding (`keyFolding: 'safe'`):
-
-```yaml
-data.metadata.items[2]: a,b
-```
-
-The three nested objects collapse into a single dotted key `data.metadata.items`.
-
-### When Folding Applies
-
-A chain of objects is foldable when:
-
-* Each object in the chain has exactly one key (leading to the next object or a leaf value)
-* The leaf value is a primitive, array, or empty object
-* All segments are valid identifier segments (letters, digits, underscores only; no dots within segments)
-* The resulting folded key doesn't collide with existing keys
-
-::: details Advanced Folding Rules
-**Segment Requirements (safe mode):**
-
-* All folded segments must match `^[A-Za-z_][A-Za-z0-9_]*$` (no dots, hyphens, or other special characters)
-* No segment may require quoting per §7.3 of the spec
-* The resulting folded key must not equal any existing sibling literal key at the same depth (collision avoidance)
-
-**Depth Limit:**
-
-* The `flattenDepth` option (default: `Infinity`) controls how many segments to fold
-* `flattenDepth: 2` folds only two-segment chains: `{a: {b: val}}` → `a.b: val`
-* Values less than 2 have no practical effect
-
-**Round-Trip with Path Expansion:**
-To reconstruct the original structure when decoding, use `expandPaths: 'safe'`. This splits dotted keys back into nested objects using the same safety rules ([spec §13.4](https://github.com/toon-format/spec/blob/main/SPEC.md#134-key-folding-and-path-expansion)).
-:::
-
-### Round-Trip with Path Expansion
-
-When decoding TOON that used key folding, enable path expansion to restore the nested structure:
-
-```ts
-import { decode, encode } from '@toon-format/toon'
-
-const original = { data: { metadata: { items: ['a', 'b'] } } }
-
-// Encode with folding
-const toon = encode(original, { keyFolding: 'safe' })
-// → "data.metadata.items[2]: a,b"
-
-// Decode with expansion
-const restored = decode(toon, { expandPaths: 'safe' })
-// → { data: { metadata: { items: ['a', 'b'] } } }
-```
-
-Path expansion is off by default, so dotted keys are treated as literal keys unless explicitly enabled.
+Comments are full-line only – a `#` anywhere else on a line is ordinary content – and decode-side only: encoders never emit them, and string values starting with `#` are always quoted so encoder output never contains a line that reads as a comment. A comment between tabular rows or entry rows does not end them ([spec §5.1](https://github.com/toon-format/spec/blob/main/SPEC.md#51-comment-lines)).
 
 ## Quoting and Types
 
@@ -5785,10 +5433,11 @@ TOON quotes strings **only when necessary** to maximize token efficiency. A stri
 * It's empty (`""`)
 * It has leading or trailing whitespace
 * It equals `true`, `false`, or `null` (case-sensitive)
-* It looks like a number (e.g., `"42"`, `"-3.14"`, `"1e-6"`, `"05"`)
+* It looks like a number (e.g., `"42"`, `"-3.14"`, `"1e-6"`, `"05"`, `"+1"`)
 * It contains special characters: colon (`:`), quote (`"`), backslash (`\`), brackets, braces, or any control character in U+0000–U+001F
 * It contains the relevant delimiter (the active delimiter inside an array scope, or the document delimiter elsewhere)
 * It equals `"-"` or starts with `"-"` followed by any character
+* It equals `"#"` or starts with `"#"` (the line would read as a comment)
 
 Otherwise, strings can be unquoted. Unicode, emoji, and strings with internal (non-leading/trailing) spaces are safe unquoted:
 
@@ -5870,7 +5519,7 @@ Standard JSON is verbose and token-expensive. For uniform arrays of objects, JSO
 ```json
 {
   "users": [
-    { "id": 1, "name": "Alice", "role": "admin" },
+    { "id": 1, "name": "Ada", "role": "admin" },
     { "id": 2, "name": "Bob", "role": "user" }
   ]
 }
@@ -5881,7 +5530,7 @@ YAML already reduces some redundancy with indentation instead of braces:
 ```yaml
 users:
   - id: 1
-    name: Alice
+    name: Ada
     role: admin
   - id: 2
     name: Bob
@@ -5892,7 +5541,7 @@ TOON goes further by declaring fields once and streaming data as rows:
 
 ```yaml
 users[2]{id,name,role}:
-  1,Alice,admin
+  1,Ada,admin
   2,Bob,user
 ```
 
@@ -6048,7 +5697,7 @@ import { encode } from '@toon-format/toon'
 
 const data = {
   users: [
-    { id: 1, name: 'Alice', role: 'admin' },
+    { id: 1, name: 'Ada', role: 'admin' },
     { id: 2, name: 'Bob', role: 'user' }
   ]
 }
@@ -6060,7 +5709,7 @@ console.log(encode(data))
 
 ```yaml
 users[2]{id,name,role}:
-  1,Alice,admin
+  1,Ada,admin
   2,Bob,user
 ```
 
@@ -6073,7 +5722,7 @@ import { decode } from '@toon-format/toon'
 
 const toon = `
 users[2]{id,name,role}:
-  1,Alice,admin
+  1,Ada,admin
   2,Bob,user
 `
 
@@ -6086,7 +5735,7 @@ console.log(JSON.stringify(data, null, 2))
 ```json
 {
   "users": [
-    { "id": 1, "name": "Alice", "role": "admin" },
+    { "id": 1, "name": "Ada", "role": "admin" },
     { "id": 2, "name": "Bob", "role": "user" }
   ]
 }
@@ -6096,7 +5745,7 @@ Round-tripping is lossless: `decode(encode(x))` always equals `x` (after normali
 
 ## Where to Go Next
 
-Now that you've seen your first TOON document, read the [Format Overview](/guide/format-overview) for complete syntax details (objects, arrays, quoting rules, key folding), then explore [Using TOON with LLMs](/guide/llm-prompts) to see how to use it effectively in prompts. For implementation details, check the [API Reference](/reference/api) (TypeScript) or the [Specification](/reference/spec) (language-agnostic normative rules).
+Now that you've seen your first TOON document, read the [Format Overview](/guide/format-overview) for complete syntax details (objects, arrays, tabular forms, quoting rules), then explore [Using TOON with LLMs](/guide/llm-prompts) to see how to use it effectively in prompts. For implementation details, check the [API Reference](/reference/api) (TypeScript) or the [Specification](/reference/spec) (language-agnostic normative rules).
 
 ---
 
@@ -6199,7 +5848,7 @@ You don't need this page to *use* TOON. It's mainly for implementers and contrib
 
 ## Current Version
 
-**Spec v{{ $spec.version }}** (2026-05-20) is the current published Working Draft. It is stable for implementation but not yet finalized; see "Status of This Document" in the spec for details.
+**Spec v{{ $spec.version }}** (2026-07-22) is the current published Working Draft. It is stable for implementation but not yet finalized; see "Status of This Document" in the spec for details.
 
 ## Media Type & File Extension
 
@@ -6229,10 +5878,10 @@ Specifies how decoders map text tokens to host values (quoted strings, unquoted 
 ### Syntax Rules
 
 [§5 Concrete Syntax and Root Form](https://github.com/toon-format/spec/blob/main/SPEC.md#5-concrete-syntax-and-root-form):
-Defines TOON's line-oriented, indentation-based notation and how to determine whether the root is an object, array, or primitive.
+Defines TOON's line-oriented, indentation-based notation and how to determine whether the root is an object, array, or primitive. §5.1 defines full-line comment lines, removed in a lexical pre-pass before any other processing.
 
 [§6 Header Syntax](https://github.com/toon-format/spec/blob/main/SPEC.md#6-header-syntax-normative):
-Normative ABNF grammar for array headers: `key[N<delim?>]{fields}:`. Specifies bracket segments, delimiter symbols, and field lists.
+Normative ABNF grammar for array and keyed headers: `key[N<delim?>]{fields}:` and `key[N:<delim?>]{fields}:`. Specifies bracket segments, delimiter symbols, and field lists, including nested field groups.
 
 [§7 Strings and Keys](https://github.com/toon-format/spec/blob/main/SPEC.md#7-strings-and-keys):
 Complete quoting rules (when strings MUST be quoted), escape sequences (only `\\`, `\"`, `\n`, `\r`, `\t`, and `\uXXXX` for other U+0000–U+001F controls are valid), and key encoding requirements.
@@ -6240,11 +5889,11 @@ Complete quoting rules (when strings MUST be quoted), escape sequences (only `\\
 [§8 Objects](https://github.com/toon-format/spec/blob/main/SPEC.md#8-objects):
 Object field encoding (key: value), nesting rules, key order preservation, and empty object handling.
 
-[§9 Arrays](https://github.com/toon-format/spec/blob/main/SPEC.md#9-arrays):
-Covers all array forms: primitive (inline), arrays of objects (tabular), mixed/non-uniform (list), and arrays of arrays. Includes tabular detection requirements.
+[§9 Arrays and Tabular Forms](https://github.com/toon-format/spec/blob/main/SPEC.md#9-arrays-and-tabular-forms):
+Covers all array forms – primitive (inline), arrays of objects (tabular, including nested field groups), mixed/non-uniform (list), and arrays of arrays – plus the keyed tabular form for objects of uniform objects (§9.5). Includes the detection requirements for each form.
 
 [§10 Objects as List Items](https://github.com/toon-format/spec/blob/main/SPEC.md#10-objects-as-list-items):
-Indentation rules for objects appearing in list items (first field on the hyphen line), including the canonical pattern when the first field is a tabular array (header on the hyphen line, rows at depth +2, sibling fields at depth +1).
+Indentation rules for objects appearing in list items (first field on the hyphen line), including the canonical pattern when the first field is a tabular array or keyed tabular object (header on the hyphen line, rows at depth +2, sibling fields at depth +1).
 
 [§11 Delimiters](https://github.com/toon-format/spec/blob/main/SPEC.md#11-delimiters):
 Delimiter scoping (document vs active), delimiter-aware quoting, and parsing rules for comma/tab/pipe delimiters.
@@ -6257,11 +5906,8 @@ Encoding requirements (consistent spaces, no tabs in indentation, no trailing sp
 [§13 Conformance and Options](https://github.com/toon-format/spec/blob/main/SPEC.md#13-conformance-and-options):
 Defines conformance classes (encoder, decoder, validator), standardized options, and conformance checklists.
 
-[§13.4 Key Folding and Path Expansion](https://github.com/toon-format/spec/blob/main/SPEC.md#134-key-folding-and-path-expansion):
-Optional encoder feature (key folding) and decoder feature (path expansion) for collapsing/expanding dotted paths, with deep-merge semantics and strict/non-strict conflict resolution.
-
 [§14 Strict Mode Errors and Diagnostics](https://github.com/toon-format/spec/blob/main/SPEC.md#14-strict-mode-errors-and-diagnostics-authoritative-checklist):
-**Authoritative checklist** of all strict-mode errors: array count and width mismatches (§14.1), syntax and structural errors (§14.2), path expansion conflicts (§14.3), and duplicate sibling keys (§14.4).
+**Authoritative checklist** of all strict-mode errors: array and entry count and width mismatches (§14.1), syntax and structural errors (§14.2), and duplicate sibling keys (§14.3).
 
 ### Implementation Guidance
 
@@ -6295,7 +5941,7 @@ Reference test suite at [github.com/toon-format/spec/tree/main/tests](https://gi
 | §7 | Strings, keys, quoting, escaping | Implementing string handling |
 | §8–10 | Objects, arrays, list items | Implementing structure encoding |
 | §11–12 | Delimiters, indentation, whitespace | Implementing formatting and validation |
-| §13 | Conformance, options, key folding/path expansion | Implementing options and features |
+| §13 | Conformance and options | Implementing options and features |
 | §14 | Strict-mode errors | Implementing validators |
 | §15–16 | Security, internationalization | Operational considerations |
 | §17–19 | IANA, versioning, IP | Ecosystem and licensing |
@@ -6311,35 +5957,26 @@ Key requirements:
 * Produce UTF-8 with LF line endings
 * Use consistent indentation (default 2 spaces, no tabs)
 * Escape `\\`, `\"`, `\n`, `\r`, `\t` in quoted strings, and use `\uXXXX` for any other U+0000–U+001F control character; lone surrogates are rejected
-* Quote strings with active delimiter, colon, or structural characters
-* Emit array lengths `[N]` matching actual count
+* Quote strings with active delimiter, colon, or structural characters, and strings starting with `-` or `#`
+* Emit array lengths `[N]` matching the actual item or entry count
 * Preserve object key order
 * Emit numbers per §2 (canonical decimal in `[1e-6, 1e21)` or zero; exponent form permitted outside)
 * Convert `-0` to `0`, `NaN`/±Infinity to `null`
 * Emit booleans and null as lowercase literals (`true`, `false`, `null`)
 * No trailing spaces or trailing newline
-* When `keyFolding="safe"` is enabled, folding MUST follow §13.4:
-  * Only fold IdentifierSegment keys (letters/digits/underscores, no dots),
-  * Do not introduce collisions with existing sibling keys,
-  * Do not fold segments that would require quoting.
-* When `flattenDepth` is set, folding MUST stop at the configured number of segments (§13.4).
+* Never emit comment lines
 
 ### Decoder Checklist (§13.2) [↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#132-decoder-conformance-checklist)
 
 Key requirements:
 
-* Parse array headers per §6 (length, delimiter, fields)
-* Split inline arrays and tabular rows using active delimiter only
+* Strip full-line comment lines in a lexical pre-pass (§5.1)
+* Parse array and keyed headers per §6 (length, keyed marker, delimiter, fields including nested field groups)
+* Split inline arrays, tabular rows, and keyed entry rows using active delimiter only
 * Unescape quoted strings with only valid escapes
 * Type unquoted primitives: true/false/null → booleans/null, numeric → number, else → string
 * Enforce strict-mode rules when `strict=true`
 * Preserve array order and object key order
-* When `expandPaths="safe"` is enabled, expand dotted keys into nested objects per §13.4:
-  * Split on `.`, only expand when all segments are IdentifierSegments,
-  * Deep-merge overlapping paths (object + object),
-  * Do not perform element-wise array merges.
-* With `expandPaths="safe"` and `strict=true` (default), MUST error on any expansion conflict (§14.3).
-* With `expandPaths="safe"` and `strict=false`, MUST apply deterministic last-write-wins (LWW) conflict resolution (§13.4).
 
 ### Validator Checklist (§13.3) [↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#133-validator-conformance-checklist)
 
@@ -6348,8 +5985,8 @@ Validators should verify:
 * Structural conformance (headers, indentation, list markers)
 * Whitespace invariants (no trailing spaces/newlines)
 * Delimiter consistency between headers and rows
-* Array length counts match declared `[N]`
-* All strict-mode requirements (including path-expansion conflicts when enabled)
+* Row, item, and entry counts match declared `[N]`
+* All strict-mode requirements
 
 ## Versioning
 
@@ -6369,7 +6006,7 @@ The spec is community-maintained at [github.com/toon-format/spec](https://github
 ---
 url: /en/reference/syntax-cheatsheet.md
 description: >-
-  JSON-to-TOON mappings at a glance for objects, arrays, quoting, key folding,
+  JSON-to-TOON mappings at a glance for objects, arrays, tabular forms, quoting,
   and type conversions.
 ---
 
@@ -6633,10 +6270,11 @@ Strings **must** be quoted if they:
 * Are empty (`""`)
 * Have leading or trailing whitespace
 * Equal `true`, `false`, or `null` (case-sensitive)
-* Look like numbers (e.g., `"42"`, `"-3.14"`, `"1e-6"`, `"05"`)
+* Look like numbers (e.g., `"42"`, `"-3.14"`, `"1e-6"`, `"05"`, `"+1"`)
 * Contain special characters: `:`, `"`, `\`, `[`, `]`, `{`, `}`, or any control character (U+0000–U+001F, including newline/tab/CR)
 * Contain the relevant delimiter – the active delimiter inside an array scope, or the document delimiter (comma by default) for object field values
 * Equal `"-"` or start with `"-"` followed by any character
+* Equal `"#"` or start with `"#"` (the line would read as a comment)
 
 Otherwise, strings can be unquoted. Unicode and emoji are safe:
 
@@ -6681,19 +6319,30 @@ key[N]{field1,field2,field3}:
 * `{fields}` = column names
 * Default delimiter: comma
 
+### Nested Field Groups
+
+```
+key[N]{id,customer{name,country},total}:
+```
+
+* `customer{…}` = a column of uniform sub-objects folded into the header
+* Rows stay flat: cells follow a depth-first walk of the field list
+
+See [Format Overview – Nested Field Groups](/guide/format-overview#nested-field-groups) for details.
+
 ### Alternative Delimiters
 
 ::: code-group
 
 ```yaml [Tab Delimiter]
 items[2	]{id	name}:
-  1	Alice
+  1	Ada
   2	Bob
 ```
 
 ```yaml [Pipe Delimiter]
 items[2|]{id|name}:
-  1|Alice
+  1|Ada
   2|Bob
 ```
 
@@ -6701,23 +6350,26 @@ items[2|]{id|name}:
 
 The delimiter symbol appears inside the brackets and braces.
 
-## Key Folding (Optional)
+## Keyed Tabular Objects
 
-Standard nesting:
-
-```yaml
-data:
-  metadata:
-    items[2]: a,b
-```
-
-With key folding (`keyFolding: 'safe'`):
+An object of uniform objects collapses into a keyed header with one entry row per entry:
 
 ```yaml
-data.metadata.items[2]: a,b
+users[2:]{age,city}:
+  alice: 30,Berlin
+  bob: 25,Paris
 ```
 
-See [Format Overview – Key Folding](/guide/format-overview#key-folding-optional) for details.
+See [Format Overview – Keyed Tabular Objects](/guide/format-overview#keyed-tabular-objects) for details.
+
+## Comments
+
+Lines whose first non-space character is `#` are stripped before decoding:
+
+```yaml
+# Full-line comments only; encoders never emit them
+host: example.com
+```
 
 ## Type Conversions
 
@@ -7372,9 +7024,9 @@ Data is in TOON format (2-space indent, arrays show length and fields).
 
 ```toon
 users[3]{id,name,role,lastLogin}:
-  1,Alice,admin,"2025-01-15T10:30:00Z"
+  1,Ada,admin,"2025-01-15T10:30:00Z"
   2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Charlie,user,"2025-01-13T09:45:00Z"
+  3,Alice,user,"2025-01-13T09:45:00Z"
 ```
 
 Task: Summarize the user roles and their last activity.
@@ -7399,9 +7051,9 @@ Data is in TOON format (2-space indent, arrays show length and fields).
 
 ```toon
 users[3]{id,name,role,lastLogin}:
-  1,Alice,admin,"2025-01-15T10:30:00Z"
+  1,Ada,admin,"2025-01-15T10:30:00Z"
   2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Charlie,user,"2025-01-13T09:45:00Z"
+  3,Alice,user,"2025-01-13T09:45:00Z"
 ```
 
 Task: Return only users with role "user" as TOON. Use the same header format. Set [N] to match the row count. Output only the code block.
@@ -7412,7 +7064,7 @@ Task: Return only users with role "user" as TOON. Use the same header format. Se
 ```toon
 users[2]{id,name,role,lastLogin}:
   2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Charlie,user,"2025-01-13T09:45:00Z"
+  3,Alice,user,"2025-01-13T09:45:00Z"
 ```
 
 The model adjusts `[N]` to `2` and generates two rows.
