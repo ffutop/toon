@@ -3,9 +3,9 @@ import * as fsp from 'node:fs/promises'
 import * as path from 'node:path'
 import * as prompts from '@clack/prompts'
 import { encode } from '../../packages/toon/src/index.ts'
-import { BENCHMARKS_DIR, FORMATTER_DISPLAY_NAMES, ROOT_DIR } from '../src/constants.ts'
+import { BENCHMARKS_DIR, ROOT_DIR } from '../src/constants.ts'
 import { TOKEN_EFFICIENCY_DATASETS } from '../src/datasets.ts'
-import { formatters, supportsCSV } from '../src/formatters.ts'
+import { FORMATS, getFormat, supportsCSV } from '../src/formats.ts'
 import { createProgressBar, ensureDir, tokenize } from '../src/utils.ts'
 
 interface FormatMetrics {
@@ -44,22 +44,19 @@ const ANALYTICS_METRICS_LIMIT = 5
 
 prompts.intro('Token Efficiency Benchmark')
 
-/**
- * Format a comparison line showing savings vs TOON
- */
+/** Format a comparison line showing savings vs TOON */
 function formatComparisonLine(format: FormatMetrics, isLast: boolean = false): string {
-  const label = FORMATTER_DISPLAY_NAMES[format.name] || format.name.toUpperCase()
+  const label = getFormat(format.name).displayName
   const signedPercent = format.savingsPercent >= 0
     ? `−${format.savingsPercent.toFixed(1)}%`
     : `+${Math.abs(format.savingsPercent).toFixed(1)}%`
   const connector = isLast ? '└─' : '├─'
   const tokenStr = format.tokens.toLocaleString('en-US').padStart(TOKEN_PADDING)
+
   return `${connector} vs ${label.padEnd(13)} ${`(${signedPercent})`.padEnd(20)}   ${tokenStr} tokens`
 }
 
-/**
- * Calculate total tokens and savings for a set of datasets
- */
+/** Calculate total tokens and savings for a set of datasets */
 function calculateTotalMetrics(datasets: BenchmarkResult[], formatNames: readonly string[]) {
   const totalToonTokens = datasets.reduce((sum, r) => {
     const toon = r.formats.find(f => f.name === 'toon')!
@@ -73,15 +70,14 @@ function calculateTotalMetrics(datasets: BenchmarkResult[], formatNames: readonl
     }, 0)
     const savings = totalTokens - totalToonTokens
     const savingsPercent = (savings / totalTokens) * 100
+
     return { name: formatName, tokens: totalTokens, savingsPercent }
   })
 
   return { totalToonTokens, totals }
 }
 
-/**
- * Generate total lines for a track
- */
+/** Generate total lines for a track */
 function generateTotalLines(
   totalToonTokens: number,
   totals: { name: string, tokens: number, savingsPercent: number }[],
@@ -125,9 +121,7 @@ function generateTotalLines(
   return lines.join('\n')
 }
 
-/**
- * Generate bar chart for a dataset
- */
+/** Generate bar chart for a dataset */
 function generateDatasetChart(result: BenchmarkResult): string {
   const { dataset, formats } = result
   const toon = formats.find(f => f.name === 'toon')!
@@ -164,14 +158,14 @@ for (const dataset of TOKEN_EFFICIENCY_DATASETS) {
   const tokensByFormat: Record<string, number> = {}
 
   // Calculate tokens for each format
-  for (const [formatName, formatter] of Object.entries(formatters)) {
+  for (const format of Object.values(FORMATS)) {
     // Skip CSV for datasets that don't support it
-    if (formatName === 'csv' && !supportsCSV(dataset))
+    if (format.name === 'csv' && !supportsCSV(dataset))
       continue
 
-    const formattedData = formatter(dataset.data)
+    const formattedData = format.encode(dataset.data)
     const tokens = tokenize(formattedData)
-    tokensByFormat[formatName] = tokens
+    tokensByFormat[format.name] = tokens
   }
 
   // Calculate savings vs TOON
@@ -272,7 +266,7 @@ ${mixedTotalLines}
 
 #### Flat-Only Track
 
-Datasets with flat tabular structures where CSV is applicable.
+Datasets with flat, fully tabular-eligible data where CSV is applicable.
 
 \`\`\`
 ${flatCharts}
@@ -329,6 +323,8 @@ ${separator}
 
 const markdown = `
 ${barChartSection}
+
+Token counts use \`gpt-tokenizer\` with \`o200k_base\` encoding (GPT-5 tokenizer). Other providers tokenize differently, so absolute counts are tokenizer-specific; relative differences between formats hold directionally.
 
 <details>
 <summary><strong>Show detailed examples</strong></summary>

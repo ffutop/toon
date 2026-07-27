@@ -383,7 +383,7 @@ describe('jsonStreamFromEvents', () => {
 
       await expect(async () => {
         await join(jsonStreamFromEvents(asyncEvents(events), 0))
-      }).rejects.toThrow('Primitive event in object without preceding key')
+      }).rejects.toThrow('Primitive event without preceding key in object')
     })
 
     it('throws on incomplete event stream', async () => {
@@ -401,9 +401,7 @@ describe('jsonStreamFromEvents', () => {
   })
 })
 
-/**
- * Converts array of events to async iterable.
- */
+/** Converts array of events to async iterable. */
 async function* asyncEvents(events: JsonStreamEvent[]): AsyncIterable<JsonStreamEvent> {
   for (const event of events) {
     await Promise.resolve()
@@ -411,9 +409,7 @@ async function* asyncEvents(events: JsonStreamEvent[]): AsyncIterable<JsonStream
   }
 }
 
-/**
- * Joins chunks from an async iterable into a single string.
- */
+/** Joins chunks from an async iterable into a single string. */
 async function join(iter: AsyncIterable<string>): Promise<string> {
   const chunks: string[] = []
   for await (const chunk of iter) {

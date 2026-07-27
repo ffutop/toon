@@ -13,7 +13,7 @@ import { formatInputLabel, readInput, readLinesFromSource } from './utils.ts'
 export async function encodeToToon(config: {
   input: InputSource
   output?: string
-  indent: NonNullable<EncodeOptions['indent']>
+  indentSize: NonNullable<EncodeOptions['indentSize']>
   delimiter: NonNullable<EncodeOptions['delimiter']>
   printStats: boolean
 }): Promise<void> {
@@ -29,7 +29,7 @@ export async function encodeToToon(config: {
 
   const encodeOptions: EncodeOptions = {
     delimiter: config.delimiter,
-    indent: config.indent,
+    indentSize: config.indentSize,
   }
 
   // When printing stats, we need the full string for token counting
@@ -59,7 +59,7 @@ export async function encodeToToon(config: {
     consola.success(`Saved ~${diff} tokens (-${percent}%)`)
   }
   else {
-    await writeStreamingToon(encodeLines(data, encodeOptions), config.output)
+    await writeStream(encodeLines(data, encodeOptions), { outputPath: config.output, separator: '\n' })
 
     if (config.output) {
       const relativeInputPath = formatInputLabel(config.input)
@@ -72,20 +72,20 @@ export async function encodeToToon(config: {
 export async function decodeToJson(config: {
   input: InputSource
   output?: string
-  indent: NonNullable<DecodeOptions['indent']>
+  indentSize: NonNullable<DecodeOptions['indentSize']>
   strict: NonNullable<DecodeOptions['strict']>
 }): Promise<void> {
-  const lineSource = readLinesFromSource(config.input)
+  const lineSource = readLinesFromSource(config.input, config.strict)
 
   const decodeStreamOptions: DecodeStreamOptions = {
-    indent: config.indent,
+    indentSize: config.indentSize,
     strict: config.strict,
   }
 
   const events = decodeStream(lineSource, decodeStreamOptions)
-  const jsonChunks = jsonStreamFromEvents(events, config.indent)
+  const jsonChunks = jsonStreamFromEvents(events, config.indentSize)
 
-  await writeStreamingJson(jsonChunks, config.output)
+  await writeStream(jsonChunks, { outputPath: config.output, separator: '' })
 
   if (config.output) {
     const relativeInputPath = formatInputLabel(config.input)
@@ -94,80 +94,37 @@ export async function decodeToJson(config: {
   }
 }
 
-/**
- * Writes JSON chunks to a file or stdout using streaming approach.
- * Chunks are written one at a time without building the full string in memory.
- */
-async function writeStreamingJson(
-  chunks: AsyncIterable<string> | Iterable<string>,
-  outputPath?: string,
+/** Streams pieces to a file or stdout, one at a time without buffering the full string. */
+async function writeStream(
+  pieces: AsyncIterable<string> | Iterable<string>,
+  options: { outputPath?: string, separator: string },
 ): Promise<void> {
-  // Stream to file using fs/promises API
-  if (outputPath) {
-    let fileHandle: FileHandle | undefined
+  const { outputPath, separator } = options
+  let fileHandle: FileHandle | undefined
 
-    try {
+  try {
+    if (outputPath)
       fileHandle = await fsp.open(outputPath, 'w')
 
-      for await (const chunk of chunks) {
-        await fileHandle.write(chunk)
-      }
-    }
-    finally {
-      await fileHandle?.close()
-    }
-  }
-  // Stream to stdout
-  else {
-    for await (const chunk of chunks) {
-      process.stdout.write(chunk)
-    }
+    const handle = fileHandle
+    const write = handle
+      ? (text: string) => handle.write(text)
+      : (text: string) => { process.stdout.write(text) }
 
-    // Add final newline for stdout
-    process.stdout.write('\n')
-  }
-}
+    let isFirst = true
+    for await (const piece of pieces) {
+      if (!isFirst && separator)
+        await write(separator)
 
-/**
- * Writes TOON lines to a file or stdout using streaming approach.
- * Lines are written one at a time without building the full string in memory.
- */
-async function writeStreamingToon(
-  lines: Iterable<string>,
-  outputPath?: string,
-): Promise<void> {
-  let isFirst = true
-
-  // Stream to file using fs/promises API
-  if (outputPath) {
-    let fileHandle: FileHandle | undefined
-
-    try {
-      fileHandle = await fsp.open(outputPath, 'w')
-
-      for (const line of lines) {
-        if (!isFirst)
-          await fileHandle.write('\n')
-
-        await fileHandle.write(line)
-        isFirst = false
-      }
-    }
-    finally {
-      await fileHandle?.close()
-    }
-  }
-  // Stream to stdout
-  else {
-    for (const line of lines) {
-      if (!isFirst)
-        process.stdout.write('\n')
-
-      process.stdout.write(line)
+      await write(piece)
       isFirst = false
     }
 
-    // Add final newline for stdout
-    process.stdout.write('\n')
+    // Stdout gets a trailing newline so the shell prompt resumes on a fresh line; files end exactly at content
+    if (!outputPath)
+      process.stdout.write('\n')
+  }
+  finally {
+    await fileHandle?.close()
   }
 }

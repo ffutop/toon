@@ -1,16 +1,19 @@
+import type { ModelDescriptor } from '../src/evaluate.ts'
+import type { Format } from '../src/formats.ts'
 import type { Question } from '../src/types.ts'
 import * as fsp from 'node:fs/promises'
 import * as path from 'node:path'
 import process from 'node:process'
 import * as prompts from '@clack/prompts'
 import PQueue from 'p-queue'
-import { BENCHMARKS_DIR, DEFAULT_CONCURRENCY, DRY_RUN, DRY_RUN_LIMITS, MODEL_RPM_LIMITS, ROOT_DIR } from '../src/constants.ts'
+import { BENCHMARKS_DIR, DEFAULT_CONCURRENCY, DRY_RUN, DRY_RUN_LIMITS, ROOT_DIR } from '../src/constants.ts'
 import { ACCURACY_DATASETS } from '../src/datasets.ts'
-import { evaluateQuestion, models } from '../src/evaluate.ts'
-import { formatters, supportsCSV } from '../src/formatters.ts'
+import { evaluateQuestion, MODELS } from '../src/evaluate.ts'
+import { FORMATS, supportsCSV } from '../src/formats.ts'
 import { generateQuestions } from '../src/questions/index.ts'
-import { calculateFormatResults, calculateTokenCounts, generateAccuracyReport } from '../src/report.ts'
+import { calculateTokenCounts, generateAccuracyReport } from '../src/report.ts'
 import { getAllModelResults, hasModelResults, saveModelResults } from '../src/storage.ts'
+import { encodeDataset } from '../src/structural-corruption.ts'
 import { ensureDir } from '../src/utils.ts'
 
 // Constants
@@ -19,44 +22,38 @@ const RATE_LIMIT_INTERVAL_MS = 60_000
 
 prompts.intro('Retrieval Accuracy Benchmark')
 
-/**
- * Generate evaluation tasks for a model
- */
-function generateEvaluationTasks(questions: Question[]): { question: Question, formatName: string }[] {
-  const tasks: { question: Question, formatName: string }[] = []
+/** Generate evaluation tasks for a model */
+function generateEvaluationTasks(questions: Question[]): { question: Question, format: Format }[] {
+  const tasks: { question: Question, format: Format }[] = []
 
   for (const question of questions) {
-    for (const [formatName] of Object.entries(formatters)) {
+    for (const format of Object.values(FORMATS)) {
       // Skip CSV for datasets that don't support it
       const dataset = ACCURACY_DATASETS.find(d => d.name === question.dataset)
-      if (formatName === 'csv' && dataset && !supportsCSV(dataset))
+      if (format.name === 'csv' && dataset && !supportsCSV(dataset))
         continue
 
-      tasks.push({ question, formatName })
+      tasks.push({ question, format })
     }
   }
 
   return tasks
 }
 
-/**
- * Check which models already have saved results
- */
-async function checkExistingResults(activeModels: typeof models) {
+/** Check which models already have saved results */
+async function checkExistingResults(activeModels: ModelDescriptor[]) {
   const existingModelResults: Record<string, boolean> = {}
 
   for (const model of activeModels) {
-    const existingResult = await hasModelResults(model.modelId)
+    const existingResult = await hasModelResults(model.id)
     if (existingResult)
-      existingModelResults[model.modelId] = existingResult
+      existingModelResults[model.id] = existingResult
   }
 
   return existingModelResults
 }
 
-/**
- * Create a progress updater function
- */
+/** Create a progress updater function */
 function createProgressUpdater(spinner: ReturnType<typeof prompts.spinner>, total: number) {
   let completed = 0
 
@@ -69,23 +66,19 @@ function createProgressUpdater(spinner: ReturnType<typeof prompts.spinner>, tota
   }
 }
 
-/**
- * Create a rate-limited queue for model evaluation
- */
-function createEvaluationQueue(modelId: string) {
-  const rpmLimit = MODEL_RPM_LIMITS[modelId]
-
+/** Create a rate-limited queue for model evaluation */
+function createEvaluationQueue(rpm: number | undefined) {
   return new PQueue({
     concurrency: DEFAULT_CONCURRENCY,
-    intervalCap: rpmLimit ?? Infinity,
-    interval: rpmLimit ? RATE_LIMIT_INTERVAL_MS : 0,
+    intervalCap: rpm ?? Infinity,
+    interval: rpm ? RATE_LIMIT_INTERVAL_MS : 0,
   })
 }
 
 // Prompt user to select which models to benchmark
-const modelChoices = models.map(({ modelId }) => ({
-  value: modelId,
-  label: modelId,
+const modelChoices = MODELS.map(({ id }) => ({
+  value: id,
+  label: id,
 }))
 
 const selectedModels = await prompts.multiselect({
@@ -99,11 +92,10 @@ if (prompts.isCancel(selectedModels)) {
   process.exit(0)
 }
 
-const activeModels = models.filter(m => selectedModels.includes(m.modelId))
+const activeModels = MODELS.filter(m => selectedModels.includes(m.id))
 
-prompts.log.info(`Selected ${activeModels.length} model(s): ${activeModels.map(m => m.modelId).join(', ')}`)
+prompts.log.info(`Selected ${activeModels.length} model(s): ${activeModels.map(m => m.id).join(', ')}`)
 
-// Check which models already have results
 const existingModelResults = await checkExistingResults(activeModels)
 
 if (Object.keys(existingModelResults).length > 0) {
@@ -122,11 +114,11 @@ if (DRY_RUN && DRY_RUN_LIMITS.maxQuestions) {
 }
 
 prompts.log.info(`Evaluating ${questions.length} questions`)
-prompts.log.info(`Testing ${Object.keys(formatters).length} formats`)
+prompts.log.info(`Testing ${Object.keys(FORMATS).length} formats`)
 
 // Evaluate each model separately and save results incrementally
-for (const model of activeModels) {
-  const modelId = model.modelId
+for (const descriptor of activeModels) {
+  const modelId = descriptor.id
 
   // Skip if results already exist
   if (existingModelResults[modelId]) {
@@ -136,15 +128,14 @@ for (const model of activeModels) {
 
   prompts.log.step(`Running benchmark for ${modelId}`)
 
-  // Generate evaluation tasks for this model
   const tasks = generateEvaluationTasks(questions)
 
   const total = tasks.length
-  const rpmLimit = MODEL_RPM_LIMITS[modelId]
-  const queue = createEvaluationQueue(modelId)
+  const languageModel = descriptor.create()
+  const queue = createEvaluationQueue(descriptor.rpm)
 
   const evalSpinner = prompts.spinner()
-  evalSpinner.start(`Running ${total} evaluations (concurrency: ${DEFAULT_CONCURRENCY}, RPM limit: ${rpmLimit ?? 'unlimited'})`)
+  evalSpinner.start(`Running ${total} evaluations (concurrency: ${DEFAULT_CONCURRENCY}, RPM limit: ${descriptor.rpm ?? 'unlimited'})`)
 
   const updateProgress = createProgressUpdater(evalSpinner, total)
 
@@ -153,24 +144,22 @@ for (const model of activeModels) {
     queue.add(async () => {
       // Format data on-demand
       const dataset = ACCURACY_DATASETS.find(d => d.name === task.question.dataset)!
-      const formatter = formatters[task.formatName]!
-      const formattedData = formatter(dataset.data)
+      const formattedData = encodeDataset(task.format, dataset)
 
       const result = await evaluateQuestion({
         question: task.question,
-        formatName: task.formatName,
+        format: task.format,
         formattedData,
-        model,
+        model: languageModel,
+        reasoning: descriptor.reasoning,
       })
 
-      // Progress update after task completes
       updateProgress()
 
       return result
     }),
   )
 
-  // Wait for all tasks to complete
   const modelResults = await Promise.all(modelResultPromises)
 
   evalSpinner.stop(`Evaluation complete for ${modelId}`)
@@ -193,9 +182,8 @@ if (allResults.length === 0) {
   process.exit(0)
 }
 
-const tokenCounts = calculateTokenCounts(formatters)
-const formatResults = calculateFormatResults(allResults, tokenCounts)
-const accuracyReport = generateAccuracyReport(allResults, formatResults, tokenCounts)
+const tokenCounts = calculateTokenCounts(FORMATS)
+const accuracyReport = generateAccuracyReport(allResults, tokenCounts)
 
 const resultsDir = path.join(BENCHMARKS_DIR, 'results')
 await ensureDir(resultsDir)

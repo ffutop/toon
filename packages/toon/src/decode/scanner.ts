@@ -1,6 +1,8 @@
 import type { BlankLineInfo, Depth, ParsedLine } from '../types.ts'
-import { CARRIAGE_RETURN, COMMENT_MARKER, SPACE, TAB } from '../constants.ts'
+import { BYTE_ORDER_MARK, CARRIAGE_RETURN, COMMENT_MARKER, SPACE, TAB } from '../constants.ts'
 import { ToonDecodeError } from './errors.ts'
+
+const LEADING_WHITESPACE_PATTERN = /^[ \t]*/
 
 // #region Scan state
 
@@ -29,56 +31,47 @@ export function parseLineIncremental(
   state.lineNumber++
   const lineNumber = state.lineNumber
 
-  // A trailing carriage return belongs to a CRLF line terminator, not to
-  // the line's content
+  if (lineNumber === 1 && raw[0] === BYTE_ORDER_MARK) {
+    raw = raw.slice(1)
+  }
+
+  // A trailing carriage return belongs to the CRLF terminator, not to the content
   if (raw[raw.length - 1] === CARRIAGE_RETURN) {
     raw = raw.slice(0, -1)
   }
 
-  // Count leading spaces
-  let indent = 0
-  while (indent < raw.length && raw[indent] === SPACE) {
-    indent++
-  }
+  const leadingWhitespace = LEADING_WHITESPACE_PATTERN.exec(raw)![0]
+  const firstTabIndex = leadingWhitespace.indexOf(TAB)
 
-  const content = raw.slice(indent)
+  // Strict rejects tab indentation below, so only the spaces before the first tab are indentation there
+  const indent = strict && firstTabIndex !== -1 ? firstTabIndex : leadingWhitespace.length
+  // Non-strict input may indent with tabs, and each tab counts as one depth level
+  const tabIndent = strict || firstTabIndex === -1 ? 0 : leadingWhitespace.split(TAB).length - 1
 
-  // Comment lines vanish in a lexical pre-pass: they are removed before
-  // blank-line tracking and strict validation, and are never counted as
-  // rows, items, entries, or blank lines
+  // Without this, `- ` would be an item carrying an empty token instead of the bare list-item marker
+  const content = trimTrailingSpaces(raw.slice(indent))
+
+  // Comment lines vanish before blank-line tracking and strict validation, so they
+  // never count as rows, items, entries, or blank lines
   if (content[0] === COMMENT_MARKER) {
     return undefined
   }
 
-  // Track blank lines
-  if (!content.trim()) {
-    const depth = computeDepthFromIndent(indent, indentSize)
+  const depth = computeDepthFromIndent(indent - tabIndent, indentSize) + tabIndent
+
+  if (!content) {
     state.blankLines.push({ lineNumber, indent, depth })
     return undefined
   }
 
-  const depth = computeDepthFromIndent(indent, indentSize)
-
-  // Strict mode validation
   if (strict) {
-    // Find the full leading whitespace region (spaces and tabs)
-    let whitespaceEndIndex = 0
-    while (
-      whitespaceEndIndex < raw.length
-      && (raw[whitespaceEndIndex] === SPACE || raw[whitespaceEndIndex] === TAB)
-    ) {
-      whitespaceEndIndex++
-    }
-
-    // Check for tabs in leading whitespace (before actual content)
-    if (raw.slice(0, whitespaceEndIndex).includes(TAB)) {
+    if (firstTabIndex !== -1) {
       throw new ToonDecodeError(
         'Tabs are not allowed in indentation in strict mode',
         { line: lineNumber, source: raw },
       )
     }
 
-    // Check for exact multiples of indentSize
     if (indent > 0 && indent % indentSize !== 0) {
       throw new ToonDecodeError(
         `Indentation must be exact multiple of ${indentSize}, but found ${indent} spaces`,
@@ -90,38 +83,16 @@ export function parseLineIncremental(
   return { raw, indent, content, depth, lineNumber }
 }
 
-export function* parseLinesSync(
-  source: Iterable<string>,
-  indentSize: number,
-  strict: boolean,
-  state: StreamingScanState,
-): Generator<ParsedLine> {
-  for (const raw of source) {
-    const parsedLine = parseLineIncremental(raw, state, indentSize, strict)
-
-    if (parsedLine !== undefined) {
-      yield parsedLine
-    }
-  }
-}
-
-export async function* parseLinesAsync(
-  source: AsyncIterable<string>,
-  indentSize: number,
-  strict: boolean,
-  state: StreamingScanState,
-): AsyncGenerator<ParsedLine> {
-  for await (const raw of source) {
-    const parsedLine = parseLineIncremental(raw, state, indentSize, strict)
-
-    if (parsedLine !== undefined) {
-      yield parsedLine
-    }
-  }
-}
-
 function computeDepthFromIndent(indentSpaces: number, indentSize: number): Depth {
   return Math.floor(indentSpaces / indentSize)
+}
+
+function trimTrailingSpaces(value: string): string {
+  let end = value.length
+  while (end > 0 && value[end - 1] === SPACE) {
+    end--
+  }
+  return end === value.length ? value : value.slice(0, end)
 }
 
 // #endregion

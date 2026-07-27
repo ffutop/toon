@@ -123,7 +123,7 @@ items[1]:
 
 :::
 
-## Arrays of Arrays
+## Arrays of Arrays (List Form)
 
 ::: code-group
 
@@ -308,7 +308,7 @@ key[N]{field1,field2,field3}:
 ```
 
 - `N` = array length
-- `{fields}` = column names
+- `{fields}` = the field list, one leaf field per row cell
 - Default delimiter: comma
 
 ### Nested Field Groups
@@ -349,7 +349,7 @@ An object of uniform objects collapses into a keyed header with one entry row pe
 ```yaml
 users[2:]{age,city}:
   alice: 30,Berlin
-  bob: 25,Paris
+  bob: 25,Oslo
 ```
 
 See [Format Overview – Keyed Tabular Objects](/guide/format-overview#keyed-tabular-objects) for details.

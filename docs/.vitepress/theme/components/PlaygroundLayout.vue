@@ -11,7 +11,8 @@ import VPInput from './VPInput.vue'
 type InputFormat = 'json' | 'yaml'
 type JsonFormat = 'pretty-2' | 'pretty-4' | 'pretty-tab' | 'compact'
 
-interface PlaygroundState extends Required<Pick<EncodeOptions, 'delimiter' | 'indent'>> {
+interface PlaygroundState extends Required<Pick<EncodeOptions, 'delimiter'>> {
+  indent: number
   input: string
   inputFormat: InputFormat
   jsonFormat: JsonFormat
@@ -28,41 +29,43 @@ function stringifyInputYaml(value: unknown): string {
 }
 
 const PRESETS = {
-  hikes: {
-    context: {
-      task: 'Our favorite hikes together',
-      location: 'Boulder',
-      season: 'spring_2025',
-    },
-    friends: ['ana', 'luis', 'sam'],
-    hikes: [
-      { id: 1, name: 'Blue Lake Trail', distanceKm: 7.5, elevationGain: 320, companion: 'ana', wasSunny: true },
-      { id: 2, name: 'Ridge Overlook', distanceKm: 9.2, elevationGain: 540, companion: 'luis', wasSunny: false },
-      { id: 3, name: 'Wildflower Loop', distanceKm: 5.1, elevationGain: 180, companion: 'sam', wasSunny: true },
+  weather: {
+    location: { city: 'Berlin', country: 'DE', units: 'metric' },
+    alerts: ['frost', 'wind'],
+    forecast: [
+      { day: 'Mon', temp: { min: -2, max: 4 }, condition: 'snow', rainChance: 80 },
+      { day: 'Tue', temp: { min: 1, max: 7 }, condition: 'cloudy', rainChance: 20 },
+      { day: 'Wed', temp: { min: 3, max: 11 }, condition: 'sunny', rainChance: 5 },
     ],
   },
   orders: {
     orders: [
       {
         orderId: 'ORD-001',
-        customer: { name: 'Alice Chen', email: 'alice@example.com' },
-        items: [
-          { sku: 'WIDGET-A', quantity: 2, price: 29.99 },
-          { sku: 'GADGET-B', quantity: 1, price: 49.99 },
-        ],
+        customer: { name: 'Ada Chen', country: 'DK' },
         total: 109.97,
         status: 'shipped',
       },
       {
         orderId: 'ORD-002',
-        customer: { name: 'Bob Smith', email: 'bob@example.com' },
-        items: [
-          { sku: 'THING-C', quantity: 3, price: 15.00 },
-        ],
+        customer: { name: 'Bob Smith', country: 'UK' },
         total: 45.00,
         status: 'delivered',
       },
+      {
+        orderId: 'ORD-003',
+        customer: { name: 'Cleo Faron', country: 'FR' },
+        total: 249.00,
+        status: 'pending',
+      },
     ],
+  },
+  environments: {
+    environments: {
+      production: { region: 'eu-central-1', replicas: 6, debug: false },
+      staging: { region: 'eu-central-1', replicas: 2, debug: true },
+      development: { region: 'local', replicas: 1, debug: true },
+    },
   },
   metrics: {
     metrics: [
@@ -92,7 +95,7 @@ const JSON_FORMAT_OPTIONS: { value: JsonFormat, label: string, indent: string | 
   { value: 'pretty-tab', label: 'Pretty (tabs)', indent: '\t' },
   { value: 'compact', label: 'Compact', indent: undefined },
 ]
-const DEFAULT_JSON = JSON.stringify(PRESETS.hikes, undefined, 2)
+const DEFAULT_JSON = JSON.stringify(PRESETS.weather, undefined, 2)
 const SHARE_URL_LIMIT = 8 * 1024
 
 // Input state
@@ -122,7 +125,7 @@ const encodingResult = computed(() => {
     const parsedInput = parseInput(inputText.value, inputFormat.value)
     return {
       output: encode(parsedInput, {
-        indent: indent.value,
+        indentSize: indent.value,
         delimiter: delimiter.value,
       }),
       error: undefined,
@@ -309,11 +312,14 @@ async function loadTokenizer() {
             <option value="" disabled selected>
               Load example…
             </option>
-            <option value="hikes">
-              Hikes (mixed structure)
+            <option value="weather">
+              Weather (mixed structure)
             </option>
             <option value="orders">
-              Orders (nested objects)
+              Orders (nested field groups)
+            </option>
+            <option value="environments">
+              Environments (keyed tabular)
             </option>
             <option value="metrics">
               Metrics (tabular data)

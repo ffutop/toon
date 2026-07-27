@@ -1,6 +1,4 @@
-/**
- * Type of expected answer for deterministic comparison
- */
+/** Type of expected answer for deterministic comparison */
 export type AnswerType
   = | 'integer'
     | 'number'
@@ -10,9 +8,7 @@ export type AnswerType
     | 'csv-list-ordered'
     | 'csv-list-unordered'
 
-/**
- * Options for answer normalization and comparison
- */
+/** Options for answer normalization and comparison */
 export interface NormalizationOptions {
   /**
    * Tolerance for floating-point number comparison (e.g., 1e-6).
@@ -51,9 +47,7 @@ interface NormalizedResult {
   error?: string
 }
 
-/**
- * Default normalization options
- */
+/** Default normalization options */
 const DEFAULT_OPTIONS: Required<NormalizationOptions> = {
   tolerance: 1e-6,
   caseSensitive: false,
@@ -72,6 +66,7 @@ const CODE_FENCE_PATTERN = /^```[\s\S]*?```$/g
 const LANGUAGE_IDENTIFIER_PATTERN = /^\w+\n/
 const CURRENCY_AND_FORMATTING_CHARS = /[$€£¥,\s]/g
 const NUMBER_CLEANUP_CHARS = /[$€£¥,%\s]/g
+const ISO_DATE_PREFIX_PATTERN = /^\d{4}-\d{2}-\d{2}/
 
 // Boolean value constants
 const TRUE_VALUES = new Set(['true', 'yes', 'y', '1'])
@@ -87,9 +82,7 @@ const DATE_PAD_CHAR = '0'
 // String constants
 const CSV_DELIMITER = ','
 
-/**
- * Strip wrapping quotes from a string
- */
+/** Strip wrapping quotes from a string */
 function stripWrappingQuotes(text: string): string {
   return text.trim().replace(WRAPPING_QUOTES_PATTERN, '')
 }
@@ -186,15 +179,19 @@ function normalizeBoolean(text: string): NormalizedResult {
 function normalizeDate(text: string): NormalizedResult {
   const cleaned = stripWrappingQuotes(text)
 
+  const isoMatch = cleaned.match(ISO_DATE_PREFIX_PATTERN)
+  if (isoMatch)
+    return { success: true, value: isoMatch[0] }
+
   // Try parsing as date
   const parsedDate = new Date(cleaned)
   if (Number.isNaN(parsedDate.getTime()))
     return { success: false, error: `Invalid date: "${text}"` }
 
-  // Normalize to YYYY-MM-DD (UTC)
-  const year = parsedDate.getUTCFullYear()
-  const monthPadded = String(parsedDate.getUTCMonth() + MONTH_OFFSET).padStart(DATE_COMPONENT_WIDTH, DATE_PAD_CHAR)
-  const dayPadded = String(parsedDate.getUTCDate()).padStart(DATE_COMPONENT_WIDTH, DATE_PAD_CHAR)
+  // Non-ISO strings parse in local time, so local getters avoid day shifts
+  const year = parsedDate.getFullYear()
+  const monthPadded = String(parsedDate.getMonth() + MONTH_OFFSET).padStart(DATE_COMPONENT_WIDTH, DATE_PAD_CHAR)
+  const dayPadded = String(parsedDate.getDate()).padStart(DATE_COMPONENT_WIDTH, DATE_PAD_CHAR)
   const normalized = `${year}-${monthPadded}-${dayPadded}`
 
   return { success: true, value: normalized }
@@ -265,9 +262,7 @@ function normalizeCsvListUnordered(text: string, options: Required<Normalization
   return { success: true, value: sorted }
 }
 
-/**
- * Normalize a value based on its expected kind
- */
+/** Normalize a value based on its expected kind */
 export function normalizeAnswer(
   text: string,
   kind: AnswerType,
@@ -295,9 +290,7 @@ export function normalizeAnswer(
   }
 }
 
-/**
- * Compare two normalized values based on answer kind
- */
+/** Compare two normalized values based on answer kind */
 function compareValues(
   actual: unknown,
   expected: unknown,

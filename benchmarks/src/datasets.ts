@@ -1,13 +1,11 @@
-import type { Dataset } from './types.ts'
+import type { Dataset, StructuralCorruption } from './types.ts'
 import { faker } from '@faker-js/faker'
 import githubRepos from '../data/github-repos.json' with { type: 'json' }
 
-// Seed for reproducibility
 faker.seed(12345)
+faker.setDefaultRefDate('2025-06-01T00:00:00.000Z')
 
-/**
- * Employee record structure for tabular dataset
- */
+/** Employee record structure for tabular dataset */
 export interface Employee {
   id: number
   name: string
@@ -18,9 +16,7 @@ export interface Employee {
   active: boolean
 }
 
-/**
- * E-commerce order structure for nested dataset
- */
+/** E-commerce order structure for nested dataset */
 export interface Order {
   orderId: string
   customer: {
@@ -43,9 +39,7 @@ export interface Order {
   createdAt?: string
 }
 
-/**
- * Analytics metric structure for time-series dataset
- */
+/** Analytics metric structure for time-series dataset */
 export interface AnalyticsMetric {
   date: string
   views: number
@@ -55,9 +49,7 @@ export interface AnalyticsMetric {
   bounceRate: number
 }
 
-/**
- * GitHub repository structure for real-world dataset
- */
+/** GitHub repository structure for real-world dataset */
 export interface Repository {
   id: number
   name: string
@@ -72,9 +64,7 @@ export interface Repository {
   pushedAt: string
 }
 
-/**
- * Event log structure for semi-uniform dataset
- */
+/** Event log structure for semi-uniform dataset */
 export interface EventLog {
   timestamp: string
   level: 'info' | 'warn' | 'error'
@@ -89,9 +79,7 @@ export interface EventLog {
   }
 }
 
-/**
- * Nested configuration structure for deeply nested dataset
- */
+/** Nested configuration structure for deeply nested dataset */
 export interface NestedConfig {
   environment: string
   version: string
@@ -144,9 +132,7 @@ export interface NestedConfig {
   }
 }
 
-/**
- * Product structure for large uniform arrays
- */
+/** Product structure for large uniform arrays */
 export interface Product {
   sku: string
   name: string
@@ -156,21 +142,40 @@ export interface Product {
   lastUpdated: string
 }
 
-/**
- * Internal types for structural validation pattern generation
- */
+/** Feature flag structure for keyed tabular dataset */
+export interface FeatureFlag {
+  enabled: boolean
+  rollout: number
+  owner: string
+  updatedAt: string
+}
+
+/** Contact structure for nested field group dataset */
+export interface Contact {
+  name: string
+  age: number
+  email: string
+  address: {
+    city: string
+    country: string
+  }
+  plan: {
+    name: string
+    price: number
+  }
+}
+
+/** Internal types for structural validation pattern generation */
 type StructuralValidationType = 'truncated' | 'extra-rows' | 'width-mismatch' | 'missing-fields'
 
 interface StructuralValidationFixture {
   type: StructuralValidationType
   description: string
   data: Record<string, unknown>
-  isValid: boolean
+  corruption: StructuralCorruption
 }
 
-/**
- * Generate analytics time-series data
- */
+/** Generate analytics time-series data */
 export function generateAnalyticsData(days: number, startDate = '2025-01-01'): {
   metrics: AnalyticsMetric[]
 } {
@@ -202,9 +207,7 @@ export function generateAnalyticsData(days: number, startDate = '2025-01-01'): {
   }
 }
 
-/**
- * Generate employee data (uniform tabular structure)
- */
+/** Generate employee data (uniform, fully tabular-eligible) */
 const departments = ['Engineering', 'Sales', 'Marketing', 'HR', 'Operations', 'Finance'] as const
 
 function generateEmployees(count: number): { employees: Employee[] } {
@@ -241,9 +244,7 @@ const tabularDataset: Dataset = {
   },
 }
 
-/**
- * Generate e-commerce orders (nested structure)
- */
+/** Generate e-commerce orders (nested structure) */
 const PRODUCT_NAMES = ['Wireless Mouse', 'USB Cable', 'Laptop Stand', 'Keyboard', 'Webcam', 'Headphones', 'Monitor', 'Desk Lamp'] as const
 const ORDER_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'] as const
 
@@ -329,7 +330,7 @@ const analyticsDataset: Dataset = {
  * Real-world dataset: Top 100 starred GitHub repositories
  *
  * @remarks
- * Tests TOON's tabular format with real data.
+ * Tests TOON's tabular form with real data.
  */
 const githubDataset: Dataset = {
   name: 'github',
@@ -551,74 +552,112 @@ export function generateProducts(count: number): { products: Product[] } {
 }
 
 /**
+ * Generate feature flags keyed by unique flag name
+ *
+ * @remarks
+ * Keys carry a loop-index prefix so colliding nouns never dedupe entries, which
+ * would otherwise silently shrink the map and break the declared entry count.
+ * Every entry shares the identical flat primitive field set so the encoder emits
+ * keyed tabular form rather than a plain per-key object fallback.
+ */
+export function generateFeatureFlags(count: number): { flags: Record<string, FeatureFlag> } {
+  const flags: Record<string, FeatureFlag> = {}
+
+  for (let i = 0; i < count; i++) {
+    const key = `flag_${i}_${faker.word.noun()}`
+    flags[key] = {
+      enabled: faker.datatype.boolean(0.6),
+      rollout: faker.number.int({ min: 0, max: 100 }),
+      owner: faker.person.firstName(),
+      updatedAt: faker.date.recent({ days: 90 }).toISOString().split('T')[0]!,
+    }
+  }
+
+  return { flags }
+}
+
+/**
+ * Generate contacts with uniform nested address and plan objects
+ *
+ * @remarks
+ * Only primitive and uniform-object columns are used – a single array-valued or
+ * non-uniform column would drop the records to list-item fallback and kill the
+ * nested field group header.
+ */
+export function generateContacts(count: number): { contacts: Contact[] } {
+  const planNames = ['free', 'starter', 'pro', 'enterprise'] as const
+  const planPrices = [0, 15, 40, 120] as const
+
+  return {
+    contacts: Array.from({ length: count }, (): Contact => {
+      const planIndex = faker.number.int({ min: 0, max: planNames.length - 1 })
+      return {
+        name: faker.person.fullName(),
+        age: faker.number.int({ min: 18, max: 80 }),
+        email: faker.internet.email().toLowerCase(),
+        address: {
+          city: faker.location.city(),
+          country: faker.location.country(),
+        },
+        plan: {
+          name: planNames[planIndex]!,
+          price: planPrices[planIndex]!,
+        },
+      }
+    }),
+  }
+}
+
+/**
  * Generate structural validation fixtures from employee data
  *
  * @remarks
- * Creates deliberately corrupted datasets to test TOON's structural validation
- * capabilities via [N] length declarations and {fields} headers.
- * Internal function used to generate structural validation datasets.
+ * Every fixture carries the identical valid 20-row dataset – the corruption is
+ * applied post-encode to each format's rendered text, not to the source data, so
+ * ground-truth NO stays derivable from what the model actually reads. TOON keeps
+ * its `[N]` length and `{fields}` width, while metadata-less formats render the
+ * lossy-pipeline outcome. Internal function used to build the validation datasets.
  */
 function generateStructuralValidationFixtures(): StructuralValidationFixture[] {
   const baseData = generateEmployees(20)
+  // Ids 21-23 continue the sequence so the appended rows read as a plausible tail
+  const appendRecords = generateEmployees(23).employees.slice(20) as unknown as Record<string, unknown>[]
 
   return [
-    // Valid baseline
+    // Valid baseline – encoded text passes through untouched
     {
       type: 'truncated' as const,
       description: 'Valid complete dataset (control)',
       data: { employees: baseData.employees },
-      isValid: true,
+      corruption: { kind: 'control' },
     },
-    // Truncated array (missing last 3 rows)
+    // Remove the last 3 record lines while TOON keeps its declared [20]
     {
       type: 'truncated' as const,
       description: 'Array truncated: 3 rows removed from end',
-      data: { employees: baseData.employees.slice(0, -3) },
-      isValid: false, // [N] won't match actual row count in TOON
+      data: { employees: baseData.employees },
+      corruption: { kind: 'truncated', removeRecordCount: 3 },
     },
-    // Extra rows (3 more than original)
+    // Append 3 rows past the declared [20]
     {
       type: 'extra-rows' as const,
       description: 'Extra rows added beyond declared length',
-      data: {
-        employees: [
-          ...baseData.employees,
-          ...generateEmployees(3).employees,
-        ],
-      },
-      isValid: false, // [N] won't match actual row count in TOON
+      data: { employees: baseData.employees },
+      corruption: { kind: 'extra-rows', appendRecords },
     },
-    // Width mismatch (inconsistent field count)
+    // Drop one cell from row 10 so the row is narrower than the header's field list
     {
       type: 'width-mismatch' as const,
       description: 'Inconsistent field count (missing salary in row 10)',
-      data: {
-        employees: baseData.employees.map((emp, i) => {
-          if (i === 9) {
-            // Row 10, missing salary field
-            const { salary, ...rest } = emp
-            return rest
-          }
-          return emp
-        }),
-      },
-      isValid: false, // Not all objects have same fields (tabular requirement)
+      data: { employees: baseData.employees },
+      corruption: { kind: 'width-mismatch', targetRecordIndices: [9], targetFieldName: 'salary' },
     },
-    // Missing required fields
+    // Drop the email value from every 5th record
     {
       type: 'missing-fields' as const,
       description: 'Missing required fields (no email in multiple rows)',
-      data: {
-        employees: baseData.employees.map((emp, i) => {
-          if (i % 5 === 0) {
-            // Every 5th row, missing email
-            const { email, ...rest } = emp
-            return rest
-          }
-          return emp
-        }),
-      },
-      isValid: false, // Not all objects have same fields (tabular requirement)
+      data: { employees: baseData.employees },
+      corruption: { kind: 'missing-fields', targetRecordIndices: [0, 5, 10, 15], targetFieldName: 'email' },
     },
   ]
 }
@@ -661,8 +700,12 @@ const nestedConfigDataset: Dataset = {
  * Structural validation datasets: Tests ability to detect incomplete, truncated, or corrupted data
  *
  * @remarks
- * These datasets test TOON's structural validation advantages via [N] length declarations
- * and {fields} headers. CSV is included to demonstrate its lack of structural metadata.
+ * All five carry the identical valid 20-row dataset and a corruption descriptor.
+ * The corruption is applied to each format's encoded text after it is emitted, so
+ * TOON's `[N]` length and `{fields}` width still declare the original shape and
+ * expose the damage, while metadata-less formats (JSON, YAML, XML, CSV) render the
+ * lossy-pipeline outcome. CSV is included to demonstrate it cannot flag truncation
+ * or extra rows at all.
  */
 const structuralValidationDatasets: Dataset[] = generateStructuralValidationFixtures().map((fixture, index) => {
   const datasetNames = [
@@ -677,6 +720,7 @@ const structuralValidationDatasets: Dataset[] = generateStructuralValidationFixt
     name: datasetNames[index]!,
     description: fixture.description,
     data: fixture.data,
+    corruption: fixture.corruption,
     metadata: {
       supportsCSV: true, // Include CSV to show it can't validate structure
       structureClass: 'uniform',
@@ -685,9 +729,7 @@ const structuralValidationDatasets: Dataset[] = generateStructuralValidationFixt
   }
 })
 
-/**
- * Datasets for accuracy benchmarks (smaller sizes for faster evaluation)
- */
+/** Datasets for accuracy benchmarks (smaller sizes for faster evaluation) */
 export const ACCURACY_DATASETS: Dataset[] = [
   tabularDataset, // 100 employees
   nestedDataset, // 50 orders
@@ -698,9 +740,7 @@ export const ACCURACY_DATASETS: Dataset[] = [
   ...structuralValidationDatasets, // 5 validation fixtures
 ]
 
-/**
- * Datasets for token efficiency benchmarks (larger sizes to amplify token differences)
- */
+/** Datasets for token efficiency benchmarks (larger sizes to amplify token differences) */
 export const TOKEN_EFFICIENCY_DATASETS: Dataset[] = [
   // Tabular: 2000 employees
   {
@@ -751,3 +791,70 @@ export const TOKEN_EFFICIENCY_DATASETS: Dataset[] = [
   // Nested config: 1 config (same as accuracy)
   nestedConfigDataset,
 ]
+
+// The v4 datasets generate after every existing dataset has consumed the shared
+// faker stream, behind explicit seeds – generating them earlier would shift the
+// stream and silently mutate every dataset above (and its ground truths)
+
+faker.seed(67890)
+
+/**
+ * Keyed dataset: Feature flags keyed by name
+ *
+ * @remarks
+ * Tests TOON's keyed tabular form.
+ */
+export const keyedDataset: Dataset = {
+  name: 'keyed',
+  description: 'Feature flags keyed by name',
+  data: generateFeatureFlags(40),
+  metadata: {
+    supportsCSV: false,
+    structureClass: 'uniform',
+    tabularEligibility: 100, // Every entry shares one flat primitive field set – fully keyed-tabular
+  },
+}
+
+const keyedTokenDataset: Dataset = {
+  name: 'keyed',
+  description: 'Feature flags keyed by name',
+  data: generateFeatureFlags(500),
+  metadata: {
+    supportsCSV: false,
+    structureClass: 'uniform',
+    tabularEligibility: 100,
+  },
+}
+
+faker.seed(67891)
+
+/**
+ * Nested-group dataset: Contacts with nested address and plan objects
+ *
+ * @remarks
+ * Tests TOON's nested field groups.
+ */
+export const nestedGroupDataset: Dataset = {
+  name: 'nested-group',
+  description: 'Contacts with nested address and plan groups',
+  data: generateContacts(50),
+  metadata: {
+    supportsCSV: false,
+    structureClass: 'nested',
+    tabularEligibility: 100, // Uniform records whose object columns fold into nested field groups
+  },
+}
+
+const nestedGroupTokenDataset: Dataset = {
+  name: 'nested-group',
+  description: 'Contacts with nested address and plan groups',
+  data: generateContacts(1000),
+  metadata: {
+    supportsCSV: false,
+    structureClass: 'nested',
+    tabularEligibility: 100,
+  },
+}
+
+ACCURACY_DATASETS.push(keyedDataset, nestedGroupDataset)
+TOKEN_EFFICIENCY_DATASETS.push(keyedTokenDataset, nestedGroupTokenDataset)

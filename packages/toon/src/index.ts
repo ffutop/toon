@@ -5,9 +5,13 @@ import { buildValueFromEvents } from './decode/event-builder.ts'
 import { encodeJsonValue } from './encode/encoders.ts'
 import { normalizeValue } from './encode/normalize.ts'
 import { applyReplacer } from './encode/replacer.ts'
+import { assertValidDelimiter } from './shared/validation.ts'
 
 export { DEFAULT_DELIMITER, DELIMITERS } from './constants.ts'
 export { ToonDecodeError } from './decode/errors.ts'
+export { rawString } from './encode/raw-string.ts'
+export type { RawString } from './encode/raw-string.ts'
+export { escapeString } from './shared/string-utils.ts'
 export type {
   DecodeOptions,
   DecodeStreamOptions,
@@ -45,7 +49,7 @@ export type {
  * encode({ tags: [] })
  * // tags: []
  *
- * encode(data, { indent: 4 })
+ * encode(data, { indentSize: 4 })
  * ```
  */
 export function encode(input: unknown, options?: EncodeOptions): string {
@@ -106,7 +110,6 @@ export function encodeLines(input: unknown, options?: EncodeOptions): Iterable<s
   const normalizedValue = normalizeValue(input)
   const resolvedOptions = resolveOptions(options)
 
-  // Apply replacer if provided
   const maybeReplacedValue = resolvedOptions.replacer
     ? applyReplacer(normalizedValue, resolvedOptions.replacer)
     : normalizedValue
@@ -117,9 +120,8 @@ export function encodeLines(input: unknown, options?: EncodeOptions): Iterable<s
 /**
  * Decodes TOON format from pre-split lines into a JavaScript value.
  *
- * This is a convenience wrapper around the streaming decoder that builds
- * the full value in memory. Useful when you already have lines as an array
- * or iterable and want the standard decode behavior.
+ * Convenience wrapper around the streaming decoder that builds the full
+ * value in memory.
  *
  * @param lines - Iterable of TOON lines (without newlines)
  * @param options - Optional decoding configuration
@@ -141,9 +143,8 @@ export function decodeFromLines(lines: Iterable<string>, options?: DecodeOptions
 /**
  * Synchronously decodes TOON lines into a stream of JSON events.
  *
- * This function yields structured events (startObject, endObject, startArray, endArray,
- * key, primitive) that represent the JSON data model without building the full value tree.
- * Useful for streaming processing, custom transformations, or memory-efficient parsing.
+ * Yields structured events (startObject, endObject, startArray, endArray, key,
+ * primitive) that represent the JSON data model without building the full value tree.
  *
  * @param lines - Iterable of TOON lines (without newlines)
  * @param options - Optional decoding configuration
@@ -168,10 +169,9 @@ export function decodeStreamSync(lines: Iterable<string>, options?: DecodeStream
 /**
  * Asynchronously decodes TOON lines into a stream of JSON events.
  *
- * This function yields structured events (startObject, endObject, startArray, endArray,
- * key, primitive) that represent the JSON data model without building the full value tree.
- * Supports both sync and async iterables for maximum flexibility with file streams,
- * network responses, or other async sources.
+ * Yields structured events (startObject, endObject, startArray, endArray, key,
+ * primitive) that represent the JSON data model without building the full value tree.
+ * Supports both sync and async iterables.
  *
  * @param source - Async or sync iterable of TOON lines (without newlines)
  * @param options - Optional decoding configuration
@@ -199,16 +199,19 @@ export function decodeStream(
 }
 
 function resolveOptions(options?: EncodeOptions): ResolvedEncodeOptions {
+  const delimiter = options?.delimiter ?? DEFAULT_DELIMITER
+  assertValidDelimiter(delimiter)
+
   return {
-    indent: options?.indent ?? 2,
-    delimiter: options?.delimiter ?? DEFAULT_DELIMITER,
+    indentSize: options?.indentSize ?? options?.indent ?? 2,
+    delimiter,
     replacer: options?.replacer,
   }
 }
 
 function resolveDecodeOptions(options?: DecodeOptions): ResolvedDecodeOptions {
   return {
-    indent: options?.indent ?? 2,
+    indentSize: options?.indentSize ?? options?.indent ?? 2,
     strict: options?.strict ?? true,
   }
 }

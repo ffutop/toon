@@ -1,11 +1,11 @@
 import type { ArgsDef, CommandDef } from 'citty'
-import type { Delimiter } from '../../toon/src/index.ts'
 import type { InputSource } from './types.ts'
 import * as path from 'node:path'
 import process from 'node:process'
 import { defineCommand } from 'citty'
 import { consola } from 'consola'
-import { DEFAULT_DELIMITER, DELIMITERS } from '../../toon/src/index.ts'
+import { DEFAULT_DELIMITER } from '../../toon/src/index.ts'
+import { assertValidDelimiter } from '../../toon/src/shared/validation.ts'
 import pkg from '../package.json' with { type: 'json' }
 import { decodeToJson, encodeToToon } from './conversion.ts'
 import { formatError } from './format-error.ts'
@@ -36,7 +36,7 @@ const args: ArgsDef = {
   },
   delimiter: {
     type: 'string',
-    description: 'Delimiter for arrays: comma (,), tab (\\t), or pipe (|)',
+    description: 'Delimiter for rows and inline arrays: comma (,), tab (\\t), or pipe (|)',
     default: ',',
   },
   indent: {
@@ -64,7 +64,7 @@ const args: ArgsDef = {
 export const mainCommand: CommandDef<ArgsDef> = defineCommand({
   meta: {
     name,
-    description: 'TOON CLI – Convert between JSON and TOON formats',
+    description: 'TOON CLI – Convert between JSON and TOON',
     version,
   },
   args,
@@ -76,17 +76,13 @@ export const mainCommand: CommandDef<ArgsDef> = defineCommand({
       : { type: 'file', path: path.resolve(input) }
     const outputPath = args.output ? path.resolve(args.output) : undefined
 
-    // Parse and validate indent
-    const indent = Number.parseInt(args.indent || '2', 10)
-    if (Number.isNaN(indent) || indent < 0) {
+    const indentSize = Number.parseInt(args.indent || '2', 10)
+    if (Number.isNaN(indentSize) || indentSize < 0) {
       throw new Error(`Invalid indent value: ${args.indent}`)
     }
 
-    // Validate delimiter
     const delimiter = args.delimiter || DEFAULT_DELIMITER
-    if (!(Object.values(DELIMITERS)).includes(delimiter as Delimiter)) {
-      throw new Error(`Invalid delimiter "${delimiter}". Valid delimiters are: comma (,), tab (\\t), pipe (|)`)
-    }
+    assertValidDelimiter(delimiter)
 
     const mode = detectMode(inputSource, args.encode, args.decode)
 
@@ -95,8 +91,8 @@ export const mainCommand: CommandDef<ArgsDef> = defineCommand({
         await encodeToToon({
           input: inputSource,
           output: outputPath,
-          delimiter: delimiter as Delimiter,
-          indent,
+          delimiter,
+          indentSize,
           printStats: args.stats === true,
         })
       }
@@ -104,7 +100,7 @@ export const mainCommand: CommandDef<ArgsDef> = defineCommand({
         await decodeToJson({
           input: inputSource,
           output: outputPath,
-          indent,
+          indentSize,
           strict: args.strict !== false,
         })
       }

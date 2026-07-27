@@ -52,7 +52,6 @@ function applyEvent(state: BuildState, event: JsonStreamEvent): void {
       const obj: JsonObject = {}
 
       if (stack.length === 0) {
-        // Root object
         stack.push({ type: 'object', obj })
       }
       else {
@@ -96,7 +95,6 @@ function applyEvent(state: BuildState, event: JsonStreamEvent): void {
       const arr: JsonValue[] = []
 
       if (stack.length === 0) {
-        // Root array
         stack.push({ type: 'array', arr })
       }
       else {
@@ -142,7 +140,7 @@ function applyEvent(state: BuildState, event: JsonStreamEvent): void {
 
       const parent = stack[stack.length - 1]!
       if (parent.type !== 'object') {
-        throw new Error('Key event in non-object context')
+        throw new Error('Key event outside of object context')
       }
 
       parent.currentKey = event.key
@@ -152,7 +150,6 @@ function applyEvent(state: BuildState, event: JsonStreamEvent): void {
 
     case 'primitive': {
       if (stack.length === 0) {
-        // Root primitive
         state.root = event.value
       }
       else {
@@ -176,7 +173,7 @@ function applyEvent(state: BuildState, event: JsonStreamEvent): void {
 
 function finalizeState(state: BuildState): JsonValue {
   if (state.stack.length !== 0) {
-    throw new Error('Incomplete event stream: stack not empty at end')
+    throw new Error('Incomplete event stream: unclosed objects or arrays')
   }
 
   if (state.root === undefined) {

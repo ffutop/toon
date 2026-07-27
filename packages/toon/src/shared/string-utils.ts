@@ -26,8 +26,7 @@ export function trimSpaces(value: string): string {
  * Escapes special characters in a string for encoding.
  *
  * @remarks
- * Handles backslashes, quotes, newlines, carriage returns, and tabs.
- * Other U+0000–U+001F control characters are emitted as `\uXXXX`.
+ * Control characters outside `\n`, `\r`, `\t`, `\\`, and `"` are emitted as `\uXXXX`.
  */
 export function escapeString(value: string): string {
   return value
@@ -44,8 +43,7 @@ export function escapeString(value: string): string {
  * Unescapes a string by processing escape sequences.
  *
  * @remarks
- * Handles `\n`, `\t`, `\r`, `\\`, `\"`, and `\uXXXX` escape sequences.
- * Lone surrogates in `\uXXXX` are rejected.
+ * Lone surrogates in `\uXXXX` escapes are rejected.
  */
 export function unescapeString(value: string): string {
   let unescaped = ''
@@ -93,7 +91,7 @@ export function unescapeString(value: string): string {
         }
         const codeUnit = Number.parseInt(hex, 16)
         if (codeUnit >= 0xD800 && codeUnit <= 0xDFFF) {
-          throw new SyntaxError(`Invalid escape sequence: \\u${hex} is a lone surrogate; supplementary code points MUST appear as literal UTF-8`)
+          throw new SyntaxError(`Invalid escape sequence: \\u${hex} is a lone surrogate. Supplementary code points MUST appear as literal UTF-8`)
         }
         unescaped += String.fromCodePoint(codeUnit)
         i += 6
@@ -110,14 +108,11 @@ export function unescapeString(value: string): string {
   return unescaped
 }
 
-/**
- * Finds the index of the closing double quote, accounting for escape sequences.
- */
+/** Finds the index of the closing double quote, accounting for escape sequences. */
 export function findClosingQuote(content: string, start: number): number {
   let i = start + 1
   while (i < content.length) {
     if (content[i] === BACKSLASH && i + 1 < content.length) {
-      // Skip escaped character
       i += 2
       continue
     }
@@ -126,19 +121,16 @@ export function findClosingQuote(content: string, start: number): number {
     }
     i++
   }
-  return -1 // Not found
+  return -1
 }
 
-/**
- * Finds the index of a character outside of quoted sections.
- */
+/** Finds the index of a character outside of quoted sections. */
 export function findUnquotedChar(content: string, char: string, start = 0): number {
   let inQuotes = false
   let i = start
 
   while (i < content.length) {
     if (content[i] === BACKSLASH && i + 1 < content.length && inQuotes) {
-      // Skip escaped character
       i += 2
       continue
     }

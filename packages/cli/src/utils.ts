@@ -9,13 +9,11 @@ export function detectMode(
   encodeFlag?: boolean,
   decodeFlag?: boolean,
 ): 'encode' | 'decode' {
-  // Explicit flags take precedence
   if (encodeFlag)
     return 'encode'
   if (decodeFlag)
     return 'decode'
 
-  // Auto-detect based on file extension
   if (input.type === 'file') {
     if (input.path.endsWith('.json'))
       return 'encode'
@@ -23,7 +21,6 @@ export function detectMode(
       return 'decode'
   }
 
-  // Default to encode
   return 'encode'
 }
 
@@ -79,20 +76,17 @@ function readFromStdin(): Promise<string> {
   })
 }
 
-export async function* readLinesFromSource(source: InputSource): AsyncIterable<string> {
+export async function* readLinesFromSource(source: InputSource, strict: boolean): AsyncIterable<string> {
   const stream = source.type === 'stdin'
     ? process.stdin
-    : createReadStream(source.path, { encoding: 'utf-8' })
+    : createReadStream(source.path)
 
-  // Explicitly set encoding for stdin
-  if (source.type === 'stdin') {
-    stream.setEncoding('utf-8')
-  }
-
+  // Node's own string decoding substitutes U+FFFD, which a strict decoder MUST NOT do
+  const decoder = new TextDecoder('utf-8', { fatal: strict })
   let buffer = ''
 
   for await (const chunk of stream) {
-    buffer += chunk
+    buffer += decodeUtf8(decoder, chunk as Uint8Array)
     let index: number
 
     while ((index = buffer.indexOf('\n')) !== -1) {
@@ -102,8 +96,18 @@ export async function* readLinesFromSource(source: InputSource): AsyncIterable<s
     }
   }
 
-  // Emit last line if buffer is not empty and doesn't end with newline
+  buffer += decodeUtf8(decoder)
+
   if (buffer.length > 0) {
     yield buffer
+  }
+}
+
+function decodeUtf8(decoder: TextDecoder, chunk?: Uint8Array): string {
+  try {
+    return chunk === undefined ? decoder.decode() : decoder.decode(chunk, { stream: true })
+  }
+  catch {
+    throw new Error('Input is not valid UTF-8. Pass --no-strict to replace ill-formed bytes')
   }
 }
