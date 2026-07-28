@@ -9,6 +9,19 @@ description: >-
 
 TOON syntax reference with concrete examples. See [Getting Started](/guide/getting-started) for an introduction.
 
+## The Four Forms
+
+A **form** is one rendering of a value. Which form you get follows from the data's shape and where it sits – you never choose by hand. Everything below is a variation on these four:
+
+| Form | Applies to | Looks like |
+| ---- | ---------- | ---------- |
+| [Inline](#primitive-arrays-inline-form) | Arrays of primitives | `tags[3]: admin,ops,dev` |
+| [List](#mixed-and-non-uniform-arrays-list-form) | Arrays that fit neither inline nor tabular form | `items[2]:` then `- ` per element |
+| [Tabular](#arrays-of-objects-tabular-form) | Arrays of uniform objects | `items[2]{sku,qty}:` then one row per element |
+| [Keyed tabular](#keyed-tabular-objects) | Objects whose values are uniform objects | `users[2:]{age,city}:` then one entry row per entry |
+
+"Form" is deliberate: these are shapes *within* TOON, not sibling formats to JSON or YAML.
+
 ## Data Model
 
 TOON models data the same way as JSON:
@@ -64,7 +77,7 @@ When an object has at least two entries whose values are uniform objects (same k
 ```yaml
 users[2:]{age,city}:
   alice: 30,Berlin
-  bob: 25,Paris
+  bob: 25,Oslo
 ```
 
 The colon immediately after the length (`[2:]`) marks the keyed header, and `[N]` declares the entry count. Each entry row is `entrykey: cell,cell,…` – the entry key followed by the entry value's leaf values in field order.
@@ -74,16 +87,16 @@ When the root object itself is eligible, the key is omitted:
 ```text
 [2:]{age,city}:
   alice: 30,Berlin
-  bob: 25,Paris
+  bob: 25,Oslo
 ```
 
-Objects that don't qualify keep the nested form unchanged: single-entry objects, objects whose values mix shapes or include primitives, arrays, or empty objects. In practice this leaves most configuration-style maps as they are ([spec §9.5](https://github.com/toon-format/spec/blob/main/SPEC.md#95-keyed-objects--tabular-form)).
+Objects that don't qualify keep the nested form unchanged: single-entry objects, objects whose values mix shapes or include primitives, arrays, or empty objects. In practice this leaves most configuration-style maps as they are ([spec §9.5](https://github.com/toon-format/spec/blob/main/SPEC.md#95-objects-of-uniform-objects--keyed-tabular-form)).
 
 ## Arrays
 
 TOON detects array structure and chooses the most efficient representation. Arrays always declare their length in brackets: `[N]`.
 
-### Primitive Arrays (Inline)
+### Primitive Arrays (Inline Form)
 
 Arrays of primitives (strings, numbers, booleans, null) are rendered inline:
 
@@ -93,9 +106,9 @@ tags[3]: admin,ops,dev
 
 The delimiter (comma by default) separates values. Strings containing the active delimiter must be quoted.
 
-### Arrays of Objects (Tabular)
+### Arrays of Objects (Tabular Form)
 
-When all objects in an array share the same set of primitive-valued keys, TOON uses tabular format:
+When all objects in an array share the same set of primitive-valued keys, TOON uses tabular form:
 
 ::: code-group
 
@@ -122,7 +135,7 @@ The header `items[2]{sku,qty,price}:` declares:
 Each row contains values in the same order as the field list. Values are encoded as primitives (strings, numbers, booleans, null) and separated by the delimiter.
 
 > \[!NOTE]
-> Tabular format requires identical field sets across all objects (same keys, order per object may vary), at least one key per object, and every column either primitive-valued or a uniform nested object (see below) – arrays that contain an empty `{}` element or mix value shapes within a column fall back to the expanded list form.
+> Tabular form requires identical field sets across all objects (same keys, order per object may vary), at least one key per object, and every column either primitive-valued or a uniform nested object (see below) – arrays that contain an empty `{}` element or mix value shapes within a column fall back to list form.
 
 ### Nested Field Groups
 
@@ -130,15 +143,15 @@ A column whose values are uniform sub-objects (same keys in every element, recur
 
 ```yaml
 orders[2]{id,customer{name,country},total}:
-  1,Ada,DE,9.99
-  2,Bob,FR,14.5
+  1,Ada,DK,99
+  2,Bob,UK,149
 ```
 
-The header `customer{name,country}` declares a nested-object column; each row's cells follow a depth-first walk of the field list, so `Ada,DE` fills `customer.name` and `customer.country` of the first order. Nesting depth is unbounded ([spec §9.3](https://github.com/toon-format/spec/blob/main/SPEC.md#93-arrays-of-objects--tabular-form)).
+The header `customer{name,country}` declares a nested-object column; each row's cells follow a depth-first walk of the field list, so `Ada,DK` fills `customer.name` and `customer.country` of the first order. Nesting depth is unbounded ([spec §9.3](https://github.com/toon-format/spec/blob/main/SPEC.md#93-arrays-of-objects--tabular-form)).
 
-### Mixed and Non-Uniform Arrays
+### Mixed and Non-Uniform Arrays (List Form)
 
-Arrays that don't meet the tabular requirements use list format with hyphen markers:
+Arrays that don't meet the tabular requirements use list form with hyphen markers:
 
 ```yaml
 items[3]:
@@ -183,7 +196,7 @@ items[1]:
 
 This is the canonical encoding for list-item objects whose first field is a tabular array.
 
-### Arrays of Arrays
+### Arrays of Arrays (List Form)
 
 When you have arrays containing primitive inner arrays:
 

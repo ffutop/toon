@@ -9,14 +9,7 @@ description: TOON Playground、CLI、编辑器支持和生态工具。
 
 ## Playground
 
-### 官方 Playground
-
 [TOON Playground](/zh/playground)（在线试用环境）支持将 JSON 或 YAML 实时转换为 TOON、对比 token 数量，并通过 URL 分享实验结果。
-
-### 社区 Playground
-
-* [格式 Token 化 Playground](https://www.curiouslychase.com/playground/format-tokenization-exploration)
-* [TOON Tools](https://toontools.vercel.app/)
 
 ## CLI 工具
 
@@ -55,26 +48,6 @@ code --install-extension vishalraut.vscode-toon
 ### ToonStore
 
 [ToonStore](https://github.com/Kalama-Tech/toonstoredb) —— 一个兼容 Redis、以 TOON 格式存储数据的嵌入式数据库，采用 Rust 实现。
-
-## ORM
-
-### TORM
-
-[TORM](https://github.com/Kalama-Tech/torm) —— 与 ToonStore 数据库配合使用的 ORM，提供适用于 Node.js、Python、Go 和 PHP 的 SDK。
-
-## Web API
-
-如果你正在构建需要处理 TOON 的 Web 应用，可以在浏览器中使用这个 TypeScript 库：
-
-```ts
-import { decode, encode } from '@toon-format/toon'
-
-// 可在浏览器、Node.js、Deno 和 Bun 中运行
-const toon = encode(data)
-const data = decode(toon)
-```
-
-详情请参阅 [API 参考](/zh/reference/api)。
 
 ## MCP
 

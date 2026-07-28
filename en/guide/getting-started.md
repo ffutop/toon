@@ -9,103 +9,78 @@ description: >-
 
 ## What Is TOON?
 
-**Token-Oriented Object Notation** is a compact, human-readable encoding of the JSON data model that minimizes tokens and makes structure easy for models to follow. It is intended for *LLM input* as a drop-in, lossless representation of your existing JSON.
+**Token-Oriented Object Notation** is a compact, human-readable encoding of the JSON data model that minimizes tokens and makes structure easy for models to follow.
 
-TOON combines YAML's indentation-based structure for nested objects with a CSV-style tabular layout for uniform arrays. TOON's sweet spot is uniform arrays of objects (multiple fields per row, same structure across items), achieving CSV-like compactness while adding explicit structure that helps LLMs parse and validate data reliably.
+TOON combines YAML's indentation-based structure for nested objects with CSV-style tabular forms for uniform data. Its sweet spot is uniform objects – same fields across items, whether in an array or keyed by ID – reaching CSV-like compactness while adding explicit structure that helps LLMs parse and validate data reliably.
 
-Think of it as a translation layer: use JSON programmatically, and encode it as TOON for LLM input.
+Think of it as a translation layer: use JSON programmatically, and encode it as TOON for LLM input – a drop-in, lossless representation of the JSON you already have.
 
 ### Why TOON?
 
-Standard JSON is verbose and token-expensive. For uniform arrays of objects, JSON repeats every field name for every record:
+LLM tokens cost money – and standard JSON is verbose. A weather forecast in TOON:
+
+```yaml
+location:
+  city: Berlin
+  country: DE
+  units: metric
+alerts[2]: frost,wind
+forecast[3]{day,temp{min,max},condition,rainChance}:
+  Mon,-2,4,snow,80
+  Tue,1,7,cloudy,20
+  Wed,3,11,sunny,5
+```
+
+The same data as JSON – ~117 tokens against TOON's ~66:
 
 ```json
 {
-  "users": [
-    { "id": 1, "name": "Ada", "role": "admin" },
-    { "id": 2, "name": "Bob", "role": "user" }
-  ]
-}
-```
-
-YAML already reduces some redundancy with indentation instead of braces:
-
-```yaml
-users:
-  - id: 1
-    name: Ada
-    role: admin
-  - id: 2
-    name: Bob
-    role: user
-```
-
-TOON goes further by declaring fields once and streaming data as rows:
-
-```yaml
-users[2]{id,name,role}:
-  1,Ada,admin
-  2,Bob,user
-```
-
-The `[2]` declares the array length, letting LLMs answer dataset-size questions and detect truncation. The `{id,name,role}` declares the field names. Each row is a compact, comma-separated list of values. The pattern is the same throughout TOON: declare structure once, stream data compactly. The result lands close to CSV density with explicit structure preserved.
-
-For a more realistic example, here's how TOON handles a dataset with both nested objects and tabular arrays:
-
-::: code-group
-
-```json [JSON (235 tokens)]
-{
-  "context": {
-    "task": "Our favorite hikes together",
-    "location": "Boulder",
-    "season": "spring_2025"
+  "location": {
+    "city": "Berlin",
+    "country": "DE",
+    "units": "metric"
   },
-  "friends": ["ana", "luis", "sam"],
-  "hikes": [
+  "alerts": [
+    "frost",
+    "wind"
+  ],
+  "forecast": [
     {
-      "id": 1,
-      "name": "Blue Lake Trail",
-      "distanceKm": 7.5,
-      "elevationGain": 320,
-      "companion": "ana",
-      "wasSunny": true
+      "day": "Mon",
+      "temp": {
+        "min": -2,
+        "max": 4
+      },
+      "condition": "snow",
+      "rainChance": 80
     },
     {
-      "id": 2,
-      "name": "Ridge Overlook",
-      "distanceKm": 9.2,
-      "elevationGain": 540,
-      "companion": "luis",
-      "wasSunny": false
+      "day": "Tue",
+      "temp": {
+        "min": 1,
+        "max": 7
+      },
+      "condition": "cloudy",
+      "rainChance": 20
     },
     {
-      "id": 3,
-      "name": "Wildflower Loop",
-      "distanceKm": 5.1,
-      "elevationGain": 180,
-      "companion": "sam",
-      "wasSunny": true
+      "day": "Wed",
+      "temp": {
+        "min": 3,
+        "max": 11
+      },
+      "condition": "sunny",
+      "rainChance": 5
     }
   ]
 }
 ```
 
-```yaml [TOON (106 tokens)]
-context:
-  task: Our favorite hikes together
-  location: Boulder
-  season: spring_2025
-friends[3]: ana,luis,sam
-hikes[3]{id,name,distanceKm,elevationGain,companion,wasSunny}:
-  1,Blue Lake Trail,7.5,320,ana,true
-  2,Ridge Overlook,9.2,540,luis,false
-  3,Wildflower Loop,5.1,180,sam,true
-```
+TOON combines YAML's indentation for the `location` object, inline form for the primitive `alerts` array, and tabular form for the `forecast` array: `[3]` declares the array length (letting LLMs answer dataset-size questions and detect truncation), `{day,…}` declares the field names once, and each row streams comma-separated values. The uniform nested `temp` objects fold into the header as a [nested field group](/guide/format-overview#nested-field-groups) (`temp{min,max}`) while rows stay flat. Each form is chosen automatically from the data's shape.
 
-:::
+The pattern is the same throughout TOON: declare structure once, stream data compactly – landing close to CSV density with explicit structure preserved.
 
-Notice how TOON combines YAML's indentation for the `context` object with inline format for the primitive `friends` array and tabular format for the structured `hikes` array. Each format is chosen automatically based on the data structure.
+Maps of uniform objects collapse as well: the [keyed tabular form](/guide/format-overview#keyed-tabular-objects) turns them into tables whose rows carry their own keys.
 
 ### Design Goals
 
@@ -118,7 +93,7 @@ TOON is optimized for specific use cases. It aims to:
 
 ## When to Use TOON
 
-TOON excels with uniform arrays of objects – data with the same structure across items. For LLM prompts, the format produces deterministic, minimally quoted text with built-in validation. Explicit array lengths (`[N]`) and field headers (`{fields}`) help detect truncation and malformed data, while the tabular structure declares fields once rather than repeating them in every row.
+TOON excels with uniform arrays of objects – data with the same structure across items. For LLM prompts, the format produces deterministic, minimally quoted text with built-in validation. Explicit array lengths (`[N]`) and field lists (`{fields}`) help detect truncation and malformed data, while tabular form declares the field list once rather than repeating it in every row.
 
 ::: tip
 The TOON format is stable, but also an idea in progress. Nothing's set in stone – help shape where it goes by contributing to the [spec](https://github.com/toon-format/spec) or sharing feedback.
@@ -130,7 +105,7 @@ TOON is not always the best choice. Consider alternatives when:
 
 * **Deeply nested or non-uniform structures** (tabular eligibility ≈ 0%): JSON-compact often uses fewer tokens. Example: complex configuration objects with many nested levels.
 * **Semi-uniform arrays** (~40–60% tabular eligibility): Token savings diminish. Prefer JSON if your pipelines already rely on it.
-* **Pure tabular data**: CSV is smaller than TOON for flat tables. TOON adds minimal overhead (~5–10%) to provide structure (array length declarations, field headers, delimiter scoping) that improves LLM reliability.
+* **Pure tabular data**: CSV is smaller than TOON for flat tables. TOON adds minimal overhead (~5–10%) to provide structure (array length declarations, field lists, delimiter scoping) that improves LLM reliability.
 * **Latency-critical applications**: Benchmark on your exact setup. Some deployments (especially local/quantized models) may process compact JSON faster despite TOON's lower token count.
 
 ::: info

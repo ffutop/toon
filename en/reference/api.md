@@ -37,7 +37,7 @@ Converts any JSON-serializable value to TOON format.
 import { encode } from '@toon-format/toon'
 
 const toon = encode(data, {
-  indent: 2,
+  indentSize: 2,
   delimiter: ','
 })
 ```
@@ -108,7 +108,7 @@ for (const line of encodeLines(data)) {
 }
 
 // Write to file line-by-line
-const lines = encodeLines(data, { indent: 2, delimiter: '\t' })
+const lines = encodeLines(data, { indentSize: 2, delimiter: '\t' })
 for (const line of lines) {
   await writeToStream(`${line}\n`)
 }
@@ -165,7 +165,7 @@ The `replacer` option allows you to transform or filter values during encoding. 
 
 #### Type Signature
 
-```typescript
+```ts
 type EncodeReplacer = (
   key: string,
   value: JsonValue,
@@ -192,7 +192,7 @@ type EncodeReplacer = (
 
 **Filtering sensitive data:**
 
-```typescript
+```ts
 import { encode } from '@toon-format/toon'
 
 const data = {
@@ -218,7 +218,7 @@ user:
 
 **Transforming values:**
 
-```typescript
+```ts
 const data = { user: 'alice', role: 'admin' }
 
 function replacer(key, value) {
@@ -239,7 +239,7 @@ role: ADMIN
 
 **Path-based transformations:**
 
-```typescript
+```ts
 const data = {
   metadata: { created: '2025-01-01' },
   user: { created: '2025-01-02' }
@@ -278,6 +278,46 @@ The replacer is called in a depth-first manner:
 Following `JSON.stringify` behavior, array indices are passed as strings (`'0'`, `'1'`, `'2'`, etc.) to the replacer, not as numbers.
 :::
 
+### Raw String Output
+
+Return `rawString(...)` from a replacer to emit a string verbatim at the value position, bypassing TOON's quoting, escaping, and number/keyword detection. Compose it with `escapeString` to control quoting yourself without reimplementing escape handling.
+
+```ts
+import { encode, escapeString, rawString } from '@toon-format/toon'
+
+const data = { name: 'Ada', age: 30 }
+
+// Always-quote mode: wrap every leaf in quotes
+console.log(encode(data, {
+  replacer: (key, value) => rawString(`"${escapeString(String(value))}"`)
+}))
+```
+
+**Output:**
+
+```yaml
+name: "Ada"
+age: "30"
+```
+
+#### Semantics
+
+* A `rawString` is only honored where a primitive would go. Returned for an object or array value, it is ignored and the container is encoded normally – this lets "wrap every value" replacers recurse into containers instead of collapsing them.
+* A value containing a line whose first non-space character is `#` throws at `rawString(...)` time – regardless of where the value would be emitted – since decoders silently strip such comment lines and the data would vanish without an error.
+
+#### `escapeString(value)`
+
+Escapes backslashes, quotes, and control characters for use inside a quoted TOON string. The decision whether a value needs quoting at all stays with the caller.
+
+```ts
+escapeString('a "quoted" value') // a \"quoted\" value
+escapeString('line1\nline2') // line1\nline2 (escaped)
+```
+
+::: warning One-Way Escape Hatch
+Raw emission bypasses the encoder's correctness guarantees: the output is not guaranteed to be valid TOON or to round-trip losslessly. In the example above, `age` decodes back as the string `"30"`, not the number `30`.
+:::
+
 ## Decoding Functions
 
 ### `decode(input, options?)`
@@ -288,7 +328,7 @@ Converts a TOON-formatted string back to JavaScript values.
 import { decode } from '@toon-format/toon'
 
 const data = decode(toon, {
-  indent: 2,
+  indentSize: 2,
   strict: true
 })
 ```
@@ -303,6 +343,8 @@ const data = decode(toon, {
 #### Return Value
 
 Returns a JavaScript value (object, array, or primitive) representing the parsed TOON data.
+
+Numeric tokens decode to `number` and follow IEEE 754 double precision: values beyond it round silently (including integers outside the safe integer range), and tokens that overflow the finite range decode as strings – this is the decoder's documented out-of-range policy per [spec §4](https://github.com/toon-format/spec/blob/main/SPEC.md#4-decoding-interpretation-reference-decoder). Values that must stay exact belong in quoted strings; `encode()` writes out-of-range `BigInt` values that way automatically.
 
 #### Example
 
@@ -541,7 +583,7 @@ Configuration for [`encode()`](#encode-input-options) and [`encodeLines()`](#enc
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `indent` | `number` | `2` | Number of spaces per indentation level |
+| `indentSize` | `number` | `2` | Number of spaces per indentation level |
 | `delimiter` | `','` | `'\t'` | `'\|'` | `','` | Delimiter for array values and tabular rows |
 | `replacer` | `EncodeReplacer` | `undefined` | Optional hook to transform or omit values before encoding (see [Replacer Function](#replacer-function)) |
 
@@ -571,7 +613,7 @@ Configuration for [`decode()`](#decode-input-options) and [`decodeFromLines()`](
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `indent` | `number` | `2` | Expected number of spaces per indentation level |
+| `indentSize` | `number` | `2` | Expected number of spaces per indentation level |
 | `strict` | `boolean` | `true` | Enable strict validation (array counts, indentation, delimiter consistency) |
 
 By default (`strict: true`), the decoder validates input strictly:
@@ -581,13 +623,21 @@ By default (`strict: true`), the decoder validates input strictly:
 * **Array length mismatches**: Throws when declared length doesn't match actual count
 * **Keyed tabular mismatches**: Throws when the entry-row count doesn't match the declared count or a row's cell count doesn't match the header's leaf fields (§9.5)
 * **Header delimiter mismatch**: Throws when the bracket-declared delimiter differs from the field-list delimiter (§14.2)
-* **Indentation errors**: Throws when leading spaces aren't exact multiples of `indent`, on depth jumps of more than one level into a nested scope, and on over-indented lines that belong to no scope (§14.2) – strict decoding never silently discards input, including trailing content after a completed root array or keyed tabular root (§5)
+* **Indentation errors**: Throws when leading spaces aren't exact multiples of `indentSize`, on depth jumps of more than one level into a nested scope, and on over-indented lines that belong to no scope (§14.2) – strict decoding never silently discards input, including trailing content after a completed root array or keyed tabular root (§5)
 * **Header structure**: Throws on leading-zero or non-integer array lengths, malformed keyed markers, and intervening content between bracket/fields/colon
 * **Duplicate sibling keys**: Throws when an object has two children with the same key, including duplicate entry keys (§14.3)
 
 All decode errors are thrown as [`ToonDecodeError`](#error-handling) instances with structured `line` and `source` fields.
 
-Set `strict: false` to skip these checks. Duplicate sibling keys then resolve with last-write-wins in document order.
+Set `strict: false` to skip these checks. Duplicate sibling keys then resolve with last-write-wins in document order. A declared `[N]` never truncates a scope: every list item, tabular row, and entry row the scope actually contains is decoded, whether that is fewer or more than `N` (§14.1).
+
+Four conditions are errors in both modes, because no recovery preserves the document's meaning (§14): a missing colon in key context, an invalid escape or unterminated quoted string, characters after a quoted token's closing quote, and a document whose depth-0 lines are neither headers nor key-value lines.
+
+**Documented decoder policies.** The specification requires each implementation to state the choices it leaves open (§4, §12, §15):
+
+* **Numbers out of range**: a token matching §4's number grammar whose magnitude exceeds the IEEE 754 double range decodes as a string; one that underflows decodes as numeric `0`; one that fits but cannot be represented exactly decodes as the nearest double. Use a `replacer` or post-process the decoded value when exact decimals matter.
+* **Tab indentation**: rejected in strict mode. With `strict: false`, leading tabs are indentation and are removed from the line's content; each leading tab contributes one level of depth.
+* **Object representation**: decoded objects are plain JavaScript objects. `__proto__`, `constructor`, and `prototype` are materialized as ordinary own entries and never mutate the prototype chain (§15). JavaScript reorders integer-like keys ahead of string keys, so a document whose keys include integer-like tokens does not preserve document key order (§2).
 
 ### `DecodeStreamOptions`
 
@@ -595,7 +645,7 @@ Configuration for [`decodeStreamSync()`](#decodestreamsync-lines-options) and [`
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `indent` | `number` | `2` | Expected number of spaces per indentation level |
+| `indentSize` | `number` | `2` | Expected number of spaces per indentation level |
 | `strict` | `boolean` | `true` | Enable strict validation (array counts, indentation, delimiter consistency) |
 
 ## TypeScript Types

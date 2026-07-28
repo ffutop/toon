@@ -7,103 +7,78 @@ description: TOON 是什么、何时使用它，以及使用 TypeScript 库进�
 
 ## 什么是 TOON ？
 
-**面向 Token 的对象表示法(Token-Oriented Object Notation)** 是一种紧凑、人类可读的 JSON 数据模型编码方式，能够最大限度地减少 token 消耗，并让大语言模型更可靠地解析结构。它专为大语言模型输入场景设计，可作为你现有 JSON 的即插即用、无损编码形式。
+**面向 Token 的对象表示法(Token-Oriented Object Notation)** 是一种紧凑、人类可读的 JSON 数据模型编码方式，能够最大限度地减少 token 消耗，并让大语言模型更可靠地解析结构。
 
-TOON 结合了 YAML 基于缩进的嵌套对象结构，以及 CSV 风格的表格布局（用于结构一致的数组）。TOON 最适合的场景是“结构一致的对象数组”（每行有多个字段，且各条目结构相同），在提供 CSV 般紧凑性的同时，还增加了明确的结构标记，帮助大语言模型更可靠地解析和校验数据。
+TOON 结合了 YAML 基于缩进的嵌套对象结构，以及用于一致数据的 CSV 风格表格化形式。它最适合结构一致的对象——无论这些对象位于数组中，还是以 ID 作为键存放——在提供 CSV 般紧凑性的同时，还增加了明确的结构标记，帮助大语言模型更可靠地解析和校验数据。
 
-可以把它看作一层“翻译层”：在程序中照常使用 JSON，而在发送给大语言模型之前将其编码为 TOON。
+可以把它看作一层“翻译层”：在程序中照常使用 JSON，而在发送给大语言模型之前将其编码为 TOON，作为你已有 JSON 的即插即用、无损表示。
 
 ### 为什么选择 TOON ？
 
-标准 JSON 冗长且消耗大量 token。对于结构一致的对象数组，JSON 会为每条记录重复每一个字段名：
+大语言模型 token 会产生成本，而标准 JSON 较为冗长。下面是一份 TOON 格式的天气预报：
+
+```yaml
+location:
+  city: Berlin
+  country: DE
+  units: metric
+alerts[2]: frost,wind
+forecast[3]{day,temp{min,max},condition,rainChance}:
+  Mon,-2,4,snow,80
+  Tue,1,7,cloudy,20
+  Wed,3,11,sunny,5
+```
+
+同一份数据用 JSON 表示，大约是 117 个 token；TOON 大约是 66 个：
 
 ```json
 {
-  "users": [
-    { "id": 1, "name": "Ada", "role": "admin" },
-    { "id": 2, "name": "Bob", "role": "user" }
-  ]
-}
-```
-
-YAML 通过缩进代替大括号减少了一些冗余：
-
-```yaml
-users:
-  - id: 1
-    name: Ada
-    role: admin
-  - id: 2
-    name: Bob
-    role: user
-```
-
-TOON 更进一步，只声明一次字段，然后数据逐行流式呈现：
-
-```yaml
-users[2]{id,name,role}:
-  1,Ada,admin
-  2,Bob,user
-```
-
-`[2]` 声明了数组长度，使大语言模型能够回答“数据集有多大”之类的问题，并检测内容是否被截断。`{id,name,role}` 声明了字段名。每条记录（即每一行）都由一份紧凑的逗号分隔值列表构成。这种模式贯穿 TOON 始终：结构只声明一次，数据紧凑地流式呈现。最终效果接近 CSV 的信息密度，同时又保留了显式的结构信息。
-
-下面是一个更贴近实际场景的例子，展示 TOON 如何同时处理嵌套对象和表格化数组：
-
-::: code-group
-
-```json [JSON (235 个 token)]
-{
-  "context": {
-    "task": "Our favorite hikes together",
-    "location": "Boulder",
-    "season": "spring_2025"
+  "location": {
+    "city": "Berlin",
+    "country": "DE",
+    "units": "metric"
   },
-  "friends": ["ana", "luis", "sam"],
-  "hikes": [
+  "alerts": [
+    "frost",
+    "wind"
+  ],
+  "forecast": [
     {
-      "id": 1,
-      "name": "Blue Lake Trail",
-      "distanceKm": 7.5,
-      "elevationGain": 320,
-      "companion": "ana",
-      "wasSunny": true
+      "day": "Mon",
+      "temp": {
+        "min": -2,
+        "max": 4
+      },
+      "condition": "snow",
+      "rainChance": 80
     },
     {
-      "id": 2,
-      "name": "Ridge Overlook",
-      "distanceKm": 9.2,
-      "elevationGain": 540,
-      "companion": "luis",
-      "wasSunny": false
+      "day": "Tue",
+      "temp": {
+        "min": 1,
+        "max": 7
+      },
+      "condition": "cloudy",
+      "rainChance": 20
     },
     {
-      "id": 3,
-      "name": "Wildflower Loop",
-      "distanceKm": 5.1,
-      "elevationGain": 180,
-      "companion": "sam",
-      "wasSunny": true
+      "day": "Wed",
+      "temp": {
+        "min": 3,
+        "max": 11
+      },
+      "condition": "sunny",
+      "rainChance": 5
     }
   ]
 }
 ```
 
-```yaml [TOON (106 个 token)]
-context:
-  task: Our favorite hikes together
-  location: Boulder
-  season: spring_2025
-friends[3]: ana,luis,sam
-hikes[3]{id,name,distanceKm,elevationGain,companion,wasSunny}:
-  1,Blue Lake Trail,7.5,320,ana,true
-  2,Ridge Overlook,9.2,540,luis,false
-  3,Wildflower Loop,5.1,180,sam,true
-```
+TOON 将 YAML 的缩进用于 `location` 对象，将内联形式用于基本类型数组 `alerts`，并将表格化形式用于 `forecast` 数组：`[3]` 声明数组长度（让大语言模型能回答数据集大小问题并检测截断），`{day,…}` 只声明一次字段名，每一行则流式呈现逗号分隔的值。结构一致的嵌套 `temp` 对象会折叠进首部，成为[嵌套字段组](/zh/guide/format-overview#嵌套字段组)（`temp{min,max}`），而行数据保持扁平。每种形式都会根据数据形状自动选择。
 
-:::
+这种模式贯穿 TOON 始终：结构只声明一次，数据紧凑地流式呈现，最终效果接近 CSV 的信息密度，同时又保留了显式结构。
 
-注意 TOON 是如何把 YAML 的缩进风格用于 `context` 对象、把内联格式用于基本类型数组 `friends`、把表格格式用于结构化数组 `hikes` 的。每种格式都会根据数据结构自动选择。
+结构一致对象组成的映射也会折叠：[带键的表格化形式](/zh/guide/format-overview#带键的表格化对象)会把它们转换成行中自带键的表格。
 
 ### 设计目标
 
@@ -116,7 +91,7 @@ TOON 针对特定使用场景进行了优化。它旨在：
 
 ## 何时使用 TOON
 
-TOON 在处理“结构一致的对象数组”（即各条目结构相同的数据）时表现出色。对于大语言模型提示词，该格式能生成确定性的、极少使用引号的文本，并带有内置校验。显式的数组长度(`[N]`)和字段头(`{fields}`)有助于检测截断和格式错误的数据，同时表格化结构只需声明一次字段，而不必在每一行中重复。
+TOON 在处理“结构一致的对象数组”（即各条目结构相同的数据）时表现出色。对于大语言模型提示词，该格式能生成确定性的、极少使用引号的文本，并带有内置校验。显式的数组长度(`[N]`)和字段列表(`{fields}`)有助于检测截断和格式错误的数据，同时表格化形式只需声明一次字段列表，而不必在每一行中重复。
 
 ::: tip
 TOON 格式已经稳定，但也仍在持续演进中。一切都不是一成不变的——欢迎通过为 [规范](https://github.com/toon-format/spec) 做贡献或分享反馈来帮助塑造它的未来方向。
@@ -128,7 +103,7 @@ TOON 并非总是最佳选择。在以下情况下可以考虑其他方案：
 
 * **深度嵌套或结构不一致的数据**（表格化适用率 ≈ 0%）：JSON 压缩版通常使用更少的 token。例如：具有多层嵌套的复杂配置对象。
 * **半一致的数组**（表格化适用率约 40%–60%）：节省的 token 会减少。如果你的处理流程已经依赖 JSON，建议优先使用 JSON。
-* **纯表格数据**：对于扁平表格，CSV 比 TOON 更小。TOON 会增加少量开销（约 5%–10%），以提供能提升大语言模型可靠性的结构（数组长度声明、字段头、分隔符作用域）。
+* **纯表格数据**：对于扁平表格，CSV 比 TOON 更小。TOON 会增加少量开销（约 5%–10%），以提供能提升大语言模型可靠性的结构（数组长度声明、字段列表、分隔符作用域）。
 * **对延迟敏感的应用**：请在你自己的实际环境中进行基准测试。某些部署场景（尤其是本地/量化模型）处理紧凑 JSON 的速度可能反而更快，尽管 TOON 的 token 数更低。
 
 ::: info

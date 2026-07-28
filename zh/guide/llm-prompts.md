@@ -7,13 +7,9 @@ description: 向大语言模型发送 TOON 以及校验其生成的 TOON 的提�
 
 TOON 专为向大语言模型传递结构化数据而设计，能降低 token 成本并提升可靠性。本指南展示如何在提示词中有效使用 TOON，既包括输入（向模型发送数据），也包括输出（让模型生成 TOON）。
 
-本指南关注 TOON 格式本身。代码示例使用 TypeScript 库进行演示，但无论你使用哪种编程语言，同样的模式和技巧都适用。
-
 ## 为什么要在大语言模型场景中使用 TOON
 
-大语言模型 token 会产生成本，而 JSON 较为冗长——数组中的每条记录都要重复字段名。TOON 只声明一次字段，然后数据逐行流式呈现，因此在结构一致的数组上尤其能减少 token；与格式化后的 JSON 相比，通常可节省 30%–60%。
-
-TOON 提供了结构护栏：显式的 `[N]` 长度和 `{fields}` 首部，让模型更容易跟踪行数据，也便于你校验输出。严格模式有助于在解码模型响应时检测截断或格式错误的 TOON。
+除了节省 token（见[基准测试](/zh/guide/benchmarks)），TOON 还提供了结构护栏：显式的 `[N]` 长度和 `{fields}` 首部，让模型更容易跟踪行数据，也便于你校验输出。严格模式有助于在解码模型响应时检测截断或格式错误的 TOON。
 
 ## 将 TOON 作为输入发送
 
@@ -28,16 +24,47 @@ TOON 提供了结构护栏：显式的 `[N]` 长度和 `{fields}` 首部，让�
 users[3]{id,name,role,lastLogin}:
   1,Ada,admin,"2025-01-15T10:30:00Z"
   2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Alice,user,"2025-01-13T09:45:00Z"
+  3,Cleo,user,"2025-01-13T09:45:00Z"
 ```
 
 任务：总结各用户的角色及其最近的活跃情况。
 ````
 
-通常有缩进和首部就足够了——模型会像处理熟悉的 YAML 或 CSV 一样处理 TOON。显式的数组长度(`[N]`)和字段头(`{fields}`)有助于模型跟踪结构，对于大型表格尤为有用。
+通常有缩进和首部就足够了——模型会像处理熟悉的 YAML 或 CSV 一样处理 TOON。显式的数组长度(`[N]`)和字段列表(`{fields}`)有助于模型跟踪结构，对于大型表格尤为有用。
 
 > \[!NOTE]
 > 大多数模型内置的语法高亮并不支持 TOON，因此使用 ` ```toon` 或 ` ```yaml` 都可以。真正重要的是结构本身。
+
+### 嵌套数据和带键数据
+
+结构一致的嵌套对象不会破坏表格化形式：嵌套对象列会在首部中折叠为[嵌套字段组](/zh/guide/format-overview#嵌套字段组)，而行数据保持扁平：
+
+```toon
+orders[2]{id,customer{name,country},total}:
+  1,Ada,DK,99
+  2,Bob,UK,149
+```
+
+结构一致对象组成的映射——例如特性标志记录、按 ID 索引的用户、按环境划分的配置——会折叠为[带键的表格化形式](/zh/guide/format-overview#带键的表格化对象)，其中每个条目行都带有自己的键：
+
+```toon
+environments[2:]{region,replicas,debug}:
+  production: eu-central-1,6,false
+  staging: eu-central-1,2,true
+```
+
+同样的提示规则适用：一个示例就足够，首部会告诉模型如何读取行。
+
+### 用注释标注数据
+
+解码器会在解析前剥离整行 `#` [注释行](/zh/guide/format-overview#注释)，因此你可以手动为提示词数据添加注释；即使模型输出中包含 `#` 解释行，也仍能被干净地解码。编码器永远不会输出注释，因此往返转换仍保持规范化。
+
+```toon
+# Only active users, exported 2025-01-15
+users[2]{id,name,role}:
+  1,Ada,admin
+  2,Bob,user
+```
 
 ## 让大语言模型生成 TOON
 
@@ -55,7 +82,7 @@ users[3]{id,name,role,lastLogin}:
 users[3]{id,name,role,lastLogin}:
   1,Ada,admin,"2025-01-15T10:30:00Z"
   2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Alice,user,"2025-01-13T09:45:00Z"
+  3,Cleo,user,"2025-01-13T09:45:00Z"
 ```
 
 任务：仅以 TOON 格式返回角色为 "user" 的用户。使用相同的首部格式。将 [N] 设为与行数一致。只输出代码块。
@@ -66,7 +93,7 @@ users[3]{id,name,role,lastLogin}:
 ```toon
 users[2]{id,name,role,lastLogin}:
   2,Bob,user,"2025-01-14T15:22:00Z"
-  3,Alice,user,"2025-01-13T09:45:00Z"
+  3,Cleo,user,"2025-01-13T09:45:00Z"
 ```
 
 模型将 `[N]` 调整为 `2`，并生成了两行数据。

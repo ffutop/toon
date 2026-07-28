@@ -124,7 +124,7 @@ items[1]:
 
 :::
 
-## 数组的数组
+## 数组的数组（列表形式）
 
 ::: code-group
 
@@ -309,7 +309,7 @@ key[N]{field1,field2,field3}:
 ```
 
 * `N` = 数组长度
-* `{fields}` = 列名
+* `{fields}` = 字段列表，每个叶子字段对应行中的一个单元格
 * 默认分隔符：逗号
 
 ### 嵌套字段组
@@ -350,7 +350,7 @@ items[2|]{id|name}:
 ```yaml
 users[2:]{age,city}:
   alice: 30,Berlin
-  bob: 25,Paris
+  bob: 25,Oslo
 ```
 
 详情请参阅 [格式概览——带键的表格化对象](/zh/guide/format-overview#带键的表格化对象)。

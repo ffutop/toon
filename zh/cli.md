@@ -170,8 +170,6 @@ cat million-records.toon | toon --decode > output.json
 toon data.json --stats -o output.toon
 ```
 
-这有助于你在将数据发送给大语言模型之前预估可节省的 token 开销。
-
 输出示例：
 
 ```
@@ -263,7 +261,7 @@ cat broken.toon | toon --decode --verbose
 
 ### 标准输入工作流
 
-该 CLI 可以与 Unix 管道及其他命令行工具无缝集成：
+该 CLI 可以与 Unix 管道及其他命令行工具集成：
 
 ```bash
 # 将 API 响应转换为 TOON
@@ -274,13 +272,4 @@ cat large-dataset.json | toon --delimiter $'\t' > output.toon
 
 # 与 jq 串联使用
 jq '.results' data.json | toon > filtered.toon
-```
-
-### 组合选项
-
-组合使用多个选项以获得最大效率：
-
-```bash
-# 制表符分隔 + 统计信息
-toon data.json --delimiter $'\t' --stats -o output.toon
 ```
