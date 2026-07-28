@@ -34,7 +34,7 @@ yarn add @toon-format/toon
 import { encode } from '@toon-format/toon'
 
 const toon = encode(data, {
-  indent: 2,
+  indentSize: 2,
   delimiter: ','
 })
 ```
@@ -105,7 +105,7 @@ for (const line of encodeLines(data)) {
 }
 
 // 逐行写入文件
-const lines = encodeLines(data, { indent: 2, delimiter: '\t' })
+const lines = encodeLines(data, { indentSize: 2, delimiter: '\t' })
 for (const line of lines) {
   await writeToStream(`${line}\n`)
 }
@@ -160,7 +160,7 @@ stream.end()
 
 #### 类型签名
 
-```typescript
+```ts
 type EncodeReplacer = (
   key: string,
   value: JsonValue,
@@ -187,7 +187,7 @@ type EncodeReplacer = (
 
 **过滤敏感数据：**
 
-```typescript
+```ts
 import { encode } from '@toon-format/toon'
 
 const data = {
@@ -213,7 +213,7 @@ user:
 
 **转换值：**
 
-```typescript
+```ts
 const data = { user: 'alice', role: 'admin' }
 
 function replacer(key, value) {
@@ -234,7 +234,7 @@ role: ADMIN
 
 **基于路径的转换：**
 
-```typescript
+```ts
 const data = {
   metadata: { created: '2025-01-01' },
   user: { created: '2025-01-02' }
@@ -272,6 +272,48 @@ replacer 以深度优先的方式被调用：
 遵循 `JSON.stringify` 的行为，数组索引会以字符串形式（`'0'`、`'1'`、`'2'` 等）传给 replacer，而不是数字。
 :::
 
+### 原始字符串输出
+
+从 replacer 返回 `rawString(...)` 可以在值的位置原样输出字符串，绕过 TOON 的引号、转义以及数字/关键字检测。你可以将它与 `escapeString` 组合使用，在不重新实现转义处理的情况下自行控制引号。
+
+```ts
+import { encode, escapeString, rawString } from '@toon-format/toon'
+
+const data = { name: 'Ada', age: 30 }
+
+// 始终加引号模式：把每个叶子值都包在引号中
+console.log(encode(data, {
+  replacer: (key, value) => rawString(`"${escapeString(String(value))}"`)
+}))
+```
+
+**输出：**
+
+<!-- eslint-skip -->
+
+```yaml
+name: "Ada"
+age: "30"
+```
+
+#### 语义
+
+- `rawString` 只会在本应输出基本类型的位置生效。如果为对象或数组值返回它，该值会被忽略，容器仍会正常编码；这让“包裹每个值”的 replacer 可以继续递归进入容器，而不是把容器折叠掉。
+- 如果值中包含某一行，且该行第一个非空格字符是 `#`，则会在调用 `rawString(...)` 时抛出错误，无论该值最终会输出到哪里。原因是解码器会静默剥离这类注释行，数据会在不报错的情况下消失。
+
+#### `escapeString(value)`
+
+转义反斜杠、引号和控制字符，以便放入带引号的 TOON 字符串中。某个值是否需要加引号仍由调用方决定。
+
+```ts
+escapeString('a "quoted" value') // a \"quoted\" value
+escapeString('line1\nline2') // line1\nline2 (escaped)
+```
+
+::: warning 单向逃生口
+原始输出会绕过编码器的正确性保证：输出不保证是有效 TOON，也不保证能无损往返。在上面的示例中，`age` 会解码回字符串 `"30"`，而不是数字 `30`。
+:::
+
 ## 解码函数
 
 ### `decode(input, options?)`
@@ -282,7 +324,7 @@ replacer 以深度优先的方式被调用：
 import { decode } from '@toon-format/toon'
 
 const data = decode(toon, {
-  indent: 2,
+  indentSize: 2,
   strict: true
 })
 ```
@@ -297,6 +339,8 @@ const data = decode(toon, {
 #### 返回值
 
 返回一个 JavaScript 值，表示解析后的 TOON 数据（对象、数组或基本类型）。
+
+数字 token 会解码为 `number`，并遵循 IEEE 754 双精度：超出精度的值会静默舍入（包括安全整数范围之外的整数）；溢出有限范围的 token 会解码为字符串。这是解码器按 [规范 §4](https://github.com/toon-format/spec/blob/main/SPEC.md#4-decoding-interpretation-reference-decoder) 记录的越界策略。必须保持精确的值应放在带引号的字符串中；`encode()` 会自动以这种方式输出越界的 `BigInt` 值。
 
 #### 示例
 
@@ -534,7 +578,7 @@ catch (error) {
 
 | 选项 | 类型 | 默认值 | 说明 |
 |--------|------|---------|-------------|
-| `indent` | `number` | `2` | 每个缩进层级的空格数 |
+| `indentSize` | `number` | `2` | 每个缩进层级的空格数 |
 | `delimiter` | `','` \| `'\t'` \| `'\|'` | `','` | 数组值和表格行使用的分隔符 |
 | `replacer` | `EncodeReplacer` | `undefined` | 编码前用于转换或省略值的可选钩子（参见 [替换函数](#替换函数-replacer)） |
 
@@ -564,7 +608,7 @@ encode(data, { delimiter: '|' })
 
 | 选项 | 类型 | 默认值 | 说明 |
 |--------|------|---------|-------------|
-| `indent` | `number` | `2` | 每个缩进层级期望的空格数 |
+| `indentSize` | `number` | `2` | 每个缩进层级期望的空格数 |
 | `strict` | `boolean` | `true` | 启用严格校验（数组数量、缩进、分隔符一致性） |
 
 默认情况下(`strict: true`)，解码器会严格校验输入：
@@ -574,13 +618,21 @@ encode(data, { delimiter: '|' })
 - **数组长度不匹配**：当声明的长度与实际数量不一致时抛出错误
 - **带键表格不匹配**：当条目行数量与声明数量不一致，或某一行的单元格数量与首部叶子字段数量不一致时抛出错误（§9.5）
 - **首部分隔符不匹配**：当方括号中声明的分隔符与字段列表中使用的分隔符不一致时抛出错误(§14.2)
-- **缩进错误**：当前导空格数不是 `indent` 的整数倍、进入嵌套作用域时深度跳过一级以上、或出现不属于任何作用域的过度缩进行时抛出错误（§14.2）。严格解码绝不会静默丢弃输入，包括根数组或根级带键表格完成后的尾随内容（§5）
+- **缩进错误**：当前导空格数不是 `indentSize` 的整数倍、进入嵌套作用域时深度跳过一级以上、或出现不属于任何作用域的过度缩进行时抛出错误（§14.2）。严格解码绝不会静默丢弃输入，包括根数组或根级带键表格完成后的尾随内容（§5）
 - **首部结构**：遇到带前导零或非整数的数组长度、格式错误的带键标记，以及方括号/字段/冒号之间存在插入内容时抛出错误
 - **重复的同级键**：当同一对象下存在两个具有相同键的子项时抛出错误，包括重复的条目键（§14.3）
 
 所有解码错误都以 [`ToonDecodeError`](#错误处理) 实例的形式抛出，并带有结构化的 `line` 和 `source` 字段。
 
-将 `strict` 设为 `false` 可跳过这些检查。此时重复的同级键会按照文档顺序、以最后写入的值为准来解决。
+将 `strict` 设为 `false` 可跳过这些检查。此时重复的同级键会按照文档顺序、以最后写入的值为准来解决。声明的 `[N]` 永远不会截断作用域：作用域中实际包含的每个列表项、表格行和条目行都会被解码，无论其数量少于还是多于 `N`（§14.1）。
+
+有四类情况在两种模式下都是错误，因为没有任何恢复方式能保留文档含义（§14）：键上下文中缺少冒号、非法转义或未终止的带引号字符串、带引号 token 的结束引号后仍有字符，以及深度 0 的行既不是首部也不是键值行的文档。
+
+**已记录的解码器策略。** 规范要求每个实现说明规范留给实现决定的选择（§4、§12、§15）：
+
+- **数字越界**：匹配 §4 数字语法但幅度超出 IEEE 754 双精度范围的 token 会解码为字符串；下溢的 token 会解码为数字 `0`；可容纳但不能精确表示的 token 会解码为最接近的双精度数。需要精确小数时，请使用 `replacer` 或在解码后处理该值。
+- **制表符缩进**：严格模式下会被拒绝。`strict: false` 时，行首制表符会被视为缩进并从行内容中移除；每个行首制表符贡献一级深度。
+- **对象表示**：解码后的对象是普通 JavaScript 对象。`__proto__`、`constructor` 和 `prototype` 会作为普通自有条目物化，绝不会修改原型链（§15）。JavaScript 会把整数形式的键重排到字符串键之前，因此如果文档键中包含整数形式的 token，则不会保留文档中的键顺序（§2）。
 
 ### `DecodeStreamOptions`
 
@@ -588,7 +640,7 @@ encode(data, { delimiter: '|' })
 
 | 选项 | 类型 | 默认值 | 说明 |
 |--------|------|---------|-------------|
-| `indent` | `number` | `2` | 每个缩进层级期望的空格数 |
+| `indentSize` | `number` | `2` | 每个缩进层级期望的空格数 |
 | `strict` | `boolean` | `true` | 启用严格校验（数组数量、缩进、分隔符一致性） |
 
 ## TypeScript 类型

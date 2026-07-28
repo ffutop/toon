@@ -26,7 +26,7 @@ hero:
 features:
   - title: 节省 Token 且准确率高
     icon: 📊
-    details: 在 4 个大语言模型的混合结构基准测试中，TOON 的准确率达到 76.4%（JSON 为 75.0%），同时所用 token 减少约 40%。
+    details: 在 4 个大语言模型的 244 个数据检索问题中，TOON 的准确率达到 72.2%（JSON 为 71.4%），同时所用 token 减少 42.6%。
     link: /zh/guide/benchmarks
   - title: JSON 数据模型
     icon: 🔁
@@ -34,18 +34,18 @@ features:
     link: /zh/guide/format-overview
   - title: LLM 友好的护栏机制
     icon: 🛤️
-    details: 显式的 [N] 长度标记和 {fields} 字段头为模型提供了清晰的模式(schema)指引，提高了解析可靠性。
+    details: 每个首部中显式的 [N] 长度标记和 {fields} 字段列表为模型提供了清晰的模式(schema)指引，提高了解析可靠性。
     link: /zh/guide/format-overview#arrays
   - title: 极简语法
     icon: 📐
     details: 用缩进代替大括号，并尽量减少引号的使用，兼具 YAML 般的可读性和 CSV 般的紧凑性。
     link: /zh/guide/format-overview#arrays
-  - title: 表格化数组
+  - title: 表格化形式
     icon: 🧺
-    details: 结构一致的对象数组会被折叠为表格，字段只声明一次，行数据逐行流式呈现。
-    link: /zh/guide/format-overview#arrays
+    details: 结构一致的对象数组，以及由结构一致对象组成的对象，都会折叠为表格，只声明一次字段列表并逐行流式呈现行值。
+    link: /zh/guide/format-overview#四种形式
   - title: 多语言生态
     icon: 🌐
-    details: 提供基于规范的 TypeScript、Python、Go、Rust、.NET 等多种语言实现。
+    details: 提供多种语言的基于规范的实现。
     link: /zh/ecosystem/implementations
 ---

@@ -13,7 +13,7 @@ description: TOON 规范导览：章节结构、合规性检查清单、媒体�
 
 ## 当前版本
 
-**规范 v{{ $spec.version }}**（2026-07-22）是当前已发布的工作草案。该版本已足够稳定并可作为实现依据，但尚未定稿；详情请参阅规范中的 “Status of This Document” 部分。
+**规范 v{{ $spec.version }}**（{{ $spec.date }}）是当前已发布的工作草案。该版本已足够稳定并可作为实现依据，但尚未定稿；详情请参阅规范中的 “Status of This Document” 部分。
 
 ## 媒体类型与文件扩展名
 
@@ -91,64 +91,19 @@ Unicode 处理，以及不受语言环境影响的数字文本格式。
 [§19 知识产权考量](https://github.com/toon-format/spec/blob/main/SPEC.md#19-intellectual-property-considerations)：
 规范的许可和知识产权条款。
 
-[附录 F：宿主类型规范化示例](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-f-host-type-normalization-examples-informative)：
+[附录 E：宿主类型规范化示例](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-e-host-type-normalization-examples-informative)：
 为 Go、JavaScript、Python、Rust 和 Java 实现提供参考说明，介绍各语言特有类型的规范化方式。
 
 [附录 C：测试套件与合规性](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-c-test-suite-and-compliance-informative)：
 位于 [github.com/toon-format/spec/tree/main/tests](https://github.com/toon-format/spec/tree/main/tests) 的参考测试套件，可用于校验各实现。
 
-## 规范章节一览
-
-| 章节 | 主题 | 何时阅读 |
-|---------|-------|--------------|
-| §1–4 | 数据模型、规范化、解码 | 实现编码器/解码器时 |
-| §5–6 | 语法、首部、根形式 | 实现解析器时 |
-| §7 | 字符串、键、引号、转义 | 实现字符串处理时 |
-| §8–10 | 对象、数组、列表项 | 实现结构编码时 |
-| §11–12 | 分隔符、缩进、空白 | 实现格式化与校验时 |
-| §13 | 合规性与选项 | 实现选项与特性时 |
-| §14 | 严格模式错误 | 实现校验器时 |
-| §15–16 | 安全、国际化 | 运行和部署时的注意事项 |
-| §17–19 | IANA、版本管理、知识产权 | 生态与许可 |
-
 ## 合规性检查清单
 
-规范包含三份合规性检查清单：
+规范按合规类别提供一份清单；请按你正在构建的组件阅读对应清单。SPEC.md 中的清单才是权威版本，其他位置的摘要可能随时间偏离。
 
-### 编码器检查清单（§13.1） <sup>[↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#131-encoder-conformance-checklist)</sup>
-
-关键要求：
-- 生成 UTF-8 编码、LF 换行符的输出
-- 使用一致的缩进（默认 2 个空格，不使用制表符）
-- 在带引号的字符串中转义 `\\`、`\"`、`\n`、`\r`、`\t`，对其他任意 U+0000–U+001F 控制字符使用 `\uXXXX`；拒绝未配对的 UTF-16 代理码位
-- 对包含生效分隔符、冒号或结构性字符，以及以 `-` 或 `#` 开头的字符串加引号
-- 输出与实际项目数或条目数一致的数组长度 `[N]`
-- 保留对象键的顺序
-- 按 §2 输出数字（对于 `[1e-6, 1e21)` 范围内或为零的值使用规范十进制；超出该范围允许使用指数记法）
-- 将 `-0` 转换为 `0`，将 `NaN`/±Infinity 转换为 `null`
-- 以小写字面量形式输出布尔值和 null（`true`、`false`、`null`）
-- 不得包含行尾空格或末尾换行符
-- 永远不要输出注释行
-
-### 解码器检查清单（§13.2） <sup>[↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#132-decoder-conformance-checklist)</sup>
-
-关键要求：
-- 在词法预处理阶段剥离整行注释（§5.1）
-- 按 §6 解析数组首部和带键首部（长度、带键标记、分隔符、字段，包括嵌套字段组）
-- 仅使用生效分隔符拆分内联数组、表格行和带键条目行
-- 只使用合法转义对带引号的字符串进行反转义
-- 为不带引号的值判定类型：true/false/null → 布尔值/null，数字 → 数字，其他 → 字符串
-- 在 `strict=true` 时强制执行严格模式规则
-- 保留数组顺序和对象键顺序
-
-### 校验器检查清单（§13.3） <sup>[↗ SPEC.md](https://github.com/toon-format/spec/blob/main/SPEC.md#133-validator-conformance-checklist)</sup>
-
-校验器应当验证：
-- 结构性合规（首部、缩进、列表标记）
-- 空白不变式（无行尾空格/换行符）
-- 首部与行数据之间的分隔符一致性
-- 实际行数、项目数和条目数与声明的 `[N]` 相符
-- 所有严格模式要求
+- **[编码器检查清单（§13.1）](https://github.com/toon-format/spec/blob/main/SPEC.md#131-encoder-conformance-checklist)**：输出不变式，包括 UTF-8/LF、一致缩进、引号与转义、`[N]` 长度、规范数字、键顺序、无注释行、无尾随空白。
+- **[解码器检查清单（§13.2）](https://github.com/toon-format/spec/blob/main/SPEC.md#132-decoder-conformance-checklist)**：解析职责，包括注释预处理、首部解析、生效分隔符拆分、token 类型判定、严格模式执行、顺序保留。
+- **[校验器检查清单（§13.3）](https://github.com/toon-format/spec/blob/main/SPEC.md#133-validator-conformance-checklist)**：结构和空白不变式、分隔符一致性、声明数量，以及所有严格模式规则。
 
 ## 版本管理
 
@@ -156,8 +111,8 @@ Unicode 处理，以及不受语言环境影响的数字文本格式。
 - **主版本**（例如 v2 → v3）：破坏性变更，与之前版本不兼容
 - **次版本**（例如 v3.1 → v3.2）：澄清说明、新增要求，或向后兼容的补充内容
 
-详细的版本历史请参阅 [附录 D：文档变更日志](https://github.com/toon-format/spec/blob/main/SPEC.md#appendix-d-document-changelog-informative)。
+详细版本历史请参阅 [CHANGELOG.md](https://github.com/toon-format/spec/blob/main/CHANGELOG.md)，版本策略请参阅 [VERSIONING.md](https://github.com/toon-format/spec/blob/main/VERSIONING.md)。
 
 ## 为规范做贡献
 
-该规范由社区在 [github.com/toon-format/spec](https://github.com/toon-format/spec) 上维护。我们欢迎各种形式的贡献：报告歧义或错误、提出澄清说明和示例、向参考测试套件添加测试用例，或讨论边界情况和规范性行为。你的反馈有助于推动这一格式的发展。
+该规范由社区在 [github.com/toon-format/spec](https://github.com/toon-format/spec) 上维护；欢迎报告歧义、提出澄清说明，或向参考测试套件添加测试用例。
